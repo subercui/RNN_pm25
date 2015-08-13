@@ -142,7 +142,7 @@ class RNNPm25Dataset(object):
             current=self.starttime+datetime.timedelta(hours=3*i)-datetime.timedelta(hours=8)#做时区变换，转回GMT
             #对于当前current所指的这一行，前steps-1个step上的数据可以从上个slice获得
             for k in range(self.n_location):
-                inputs[i+k*self.n_perpoint,0:self.steps-1,0:self.element-1]=inputs[i+k*self.n_perpoint-1,1:self.steps,0:self.element-1]
+                inputs[i+k*self.n_perpoint,0:self.steps-1,0:self.n_element-1]=inputs[i+k*self.n_perpoint-1,1:self.steps,0:self.n_element-1]
             #对于当前current所指的这一行，最后小时的六个数据需要以下重新读文件获得
             p_time=current+datetime.timedelta(hours=t_predict-3)
             #p_time就代表这一帧的时间，尝试打开对应文件
@@ -214,7 +214,7 @@ class RNNPm25Dataset(object):
             current=self.starttime+datetime.timedelta(hours=3*i)
             #对于当前current所指的这一行，前self.steps-1维的数据可以从上一个slice获得
             for k in range(self.n_location):
-                inputs[i+k*self.n_perpoint,0:self.steps-1,self.element-1]=inputs[i+k*self.n_perpoint-1,1:self.steps,self.element-1]
+                inputs[i+k*self.n_perpoint,0:self.steps-1,self.n_element-1]=inputs[i+k*self.n_perpoint-1,1:self.steps,self.n_element-1]
             for h in [t_predict]:#最后新的1位数据要读文件
                 name=(current+datetime.timedelta(hours=h)).strftime('%Y%m%d%H')#未来t_predict小时
                 if int(name) > 2015061324:
