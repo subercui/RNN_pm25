@@ -145,20 +145,22 @@ for k in xrange(100):#run k epochs
     for i in xrange(train_set.shape[0]): #an epoch
         error_addup=RNNobj.update_fun(train_gfs[i],train_pm25in[i],train_pm25target[i],40)+error_addup
         error=error_addup/i
-        if i%1000 == 0:
+        if i%1000 == 0 and i >0:
             print ("batch %(batch)d, error=%(error)f" % ({"batch": i, "error": error}))
     error=error_addup/i
-    print ("   epoch %(epoch)d, error=%(error)f" % ({"epoch": k, "error": error}))
+    print ("   epoch %(epoch)d, error=%(error)f" % ({"epoch": k+1, "error": error}))
     
     valid_error_addup=0
     for i in xrange(valid_set.shape[0]): #an epoch
         valid_error_addup=RNNobj.valid_fun(valid_gfs[i],valid_pm25in[i],valid_pm25target[i],40)+valid_error_addup
         error=valid_error_addup/i
-        if i%1000 == 0:
-            print error
+        if i%1000 == 0 and i >0:
+            print ("batch %(batch)d, validation error:"%({"batch":i}))
+            print error.transpose()
             #print ("batch %(batch)d, validation error=%(error)f" % ({"batch": i, "error": error}))
     error=valid_error_addup/i
-    print error
+    print ("epoch %(epoch)d, validation error:"%({"epoch":k+1}))
+    print error.transpose()
     #print ("   validation epoch %(epoch)d, validation error=%(error)f" % ({"epoch": k, "error": error}))
 
        
