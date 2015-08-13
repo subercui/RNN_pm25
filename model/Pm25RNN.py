@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import theano, theano.tensor as T
+import theano.sandbox.cuda.basic_ops as cu
 import numpy as np
 import theano_lstm
 import random
@@ -25,7 +26,7 @@ class Model(object):
         self.model.layers.append(Layer(hidden_size, output_size, activation = T.tanh))
         # inputs are matrices of indices,
         # each row is a sentence, each column a timestep
-        self.steps=T.iscalar('steps')
+        self.steps=40
         self.gfs=T.matrix('gfs')#输入gfs数据
         self.pm25in=T.matrix('pm25in')#pm25初始数据部分
         self.pm25target=T.matrix('pm25target')#输出的目标target
@@ -64,10 +65,10 @@ class Model(object):
         
     def create_cost_fun (self):
         #可能改cost function，记得                                 
-        self.cost = (self.predictions - self.pm25target).norm(L=2) / self.steps
+        self.cost = cu.gpu_from_host((self.predictions - self.pm25target).norm(L=2) / self.steps)
         
     def create_valid_error(self):
-        self.valid_error=T.abs_(self.predictions - self.pm25target)
+        self.valid_error=cu.gpu_from_host(T.abs_(self.predictions - self.pm25target))
         
     def create_predict_function(self):
         self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in,self.steps],outputs =self.predictions,allow_input_downcast=True)
@@ -96,7 +97,8 @@ class Model(object):
 print '... loading data'
 today=datetime.today()
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
-dataset='/data/pm25data/dataset/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
+#dataset='/data/pm25data/dataset/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
+dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)
 data=np.asarray(data,dtype=theano.config.floatX)
@@ -145,7 +147,7 @@ for k in xrange(100):#run k epochs
     for i in xrange(train_set.shape[0]): #an epoch
         error_addup=RNNobj.update_fun(train_gfs[i],train_pm25in[i],train_pm25target[i],40)+error_addup
         error=error_addup/i
-        if i%1000 == 0 and i >0:
+        if i%(train_set.shape[0]/3) == 0 and i >0:
             print ("batch %(batch)d, error=%(error)f" % ({"batch": i, "error": error}))
     error=error_addup/i
     print ("   epoch %(epoch)d, error=%(error)f" % ({"epoch": k+1, "error": error}))
@@ -154,7 +156,7 @@ for k in xrange(100):#run k epochs
     for i in xrange(valid_set.shape[0]): #an epoch
         valid_error_addup=RNNobj.valid_fun(valid_gfs[i],valid_pm25in[i],valid_pm25target[i],40)+valid_error_addup
         error=valid_error_addup/i
-        if i%1000 == 0 and i >0:
+        if i%(valid_set.shape[0]/3) == 0 and i >0:
             print ("batch %(batch)d, validation error:"%({"batch":i}))
             print error.transpose()
             #print ("batch %(batch)d, validation error=%(error)f" % ({"batch": i, "error": error}))
