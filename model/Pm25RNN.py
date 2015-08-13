@@ -8,6 +8,7 @@ from datetime import datetime
 from theano_lstm import LSTM, RNN, StackedCells, Layer, create_optimization_updates, masked_loss
 theano.config.compute_test_value = 'off'
 theano.config.floatX = 'float32'
+theano.config.mode='FAST_RUN'
 #theano.config.device = 'gpu'
         
 class Model(object):
@@ -28,7 +29,7 @@ class Model(object):
         self.gfs=T.matrix('gfs')#输入gfs数据
         self.pm25in=T.matrix('pm25in')#pm25初始数据部分
         self.pm25target=T.matrix('pm25target')#输出的目标target
-        self.srng = T.shared_randomstreams.RandomStreams(np.random.randint(0, 1024))
+        #self.srng = T.shared_randomstreams.RandomStreams(np.random.randint(0, 1024))
         # create symbolic variables for prediction:(就是做一次整个序列完整的进行预测，得到结果是prediction)
         self.predictions = self.create_prediction()
         # create gradient training functions:
@@ -95,9 +96,10 @@ class Model(object):
 print '... loading data'
 today=datetime.today()
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
-dataset='/Users/subercui/RNNPm25Dataset20150811_t10p100shuffled.pkl.gz'
+dataset='/data/pm25data/dataset/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)
+data=np.asarray(data,dtype=theano.config.floatX)
 f.close()
 #风速绝对化，记得加入
 #data scale and split
@@ -112,11 +114,9 @@ def construct(data_xy,borrow=True):
     data_pm25in,data_pm25target=np.split(data_pm25,[2],axis=1)
     data_pm25target=data_pm25target.reshape(data_pm25target.shape[0],data_pm25target.shape[1],1)
     #加入shared构造，记得加入,theano禁止调用
-    '''
-    shared_gfs=theano.shared(np.asarray(data_gfs,dtype=theano.config.floatX),borrow=borrow)
-    shared_pm25in=theano.shared(np.asarray(data_pm25in,dtype=theano.config.floatX),borrow=borrow)
-    shared_pm25target=theano.shared(np.asarray(data_pm25target,dtype=theano.config.floatX),borrow=borrow)
-    '''
+    data_gfs=np.asarray(data_gfs,dtype=theano.config.floatX)
+    data_pm25in=np.asarray(data_pm25in,dtype=theano.config.floatX)
+    data_pm25target=np.asarray(data_pm25target,dtype=theano.config.floatX)
     return data_gfs,data_pm25in,data_pm25target
     
 train_gfs,train_pm25in,train_pm25target=construct(train_set)
