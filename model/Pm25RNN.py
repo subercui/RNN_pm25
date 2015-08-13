@@ -7,6 +7,8 @@ import cPickle, gzip
 from datetime import datetime
 from theano_lstm import LSTM, RNN, StackedCells, Layer, create_optimization_updates, masked_loss
 theano.config.compute_test_value = 'off'
+theano.config.floatX = 'float32'
+#theano.config.device = 'gpu'
         
 class Model(object):
     """
@@ -158,7 +160,8 @@ for k in xrange(100):#run k epochs
     error=valid_error_addup/i
     print error
     #print ("   validation epoch %(epoch)d, validation error=%(error)f" % ({"epoch": k, "error": error}))
-    
+
+       
 
 '''
 gfs=np.arange(24).reshape(4,6)
