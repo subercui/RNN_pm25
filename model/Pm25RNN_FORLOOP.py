@@ -80,6 +80,8 @@ class Model:
             inputs=[self.gfs,self.pm25in, self.pm25target],
             outputs=self.cost,
             updates=updates,
+            name='update_fun',
+            profile=True,
             allow_input_downcast=True)
             
     def create_validate_function(self):
