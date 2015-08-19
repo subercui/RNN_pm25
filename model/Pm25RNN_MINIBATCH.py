@@ -67,10 +67,10 @@ class Model:
         return self.results
         
     def create_cost_fun (self):                                 
-        self.cost = (self.predictions - self.pm25target).norm(L=2) / self.steps
+        self.cost = (self.predictions - self.pm25target).norm(L=2)
 
     def create_valid_error(self):
-        self.valid_error=T.abs_(self.predictions - self.pm25target)
+        self.valid_error=T.mean(T.abs_(self.predictions - self.pm25target),axis=0)
                 
     def create_predict_function(self):
         self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in],outputs =self.predictions,allow_input_downcast=True)
@@ -101,8 +101,8 @@ class Model:
 print '... loading data'
 today=datetime.today()
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
-#dataset='/data/pm25data/dataset/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
-dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
+dataset='/data/pm25data/dataset/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
+#dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)
 data=np.asarray(data,dtype=theano.config.floatX)
@@ -149,31 +149,33 @@ RNNobj = Model(
 print '... training'
 
 batch=20
+train_batches=train_set.shape[0]/batch
+valid_batches=valid_set.shape[0]/batch
 #a=RNNobj.pred_fun(train_gfs[0:20],train_pm25in[0:20])
 
-for k in xrange(1):#run k epochs
+for k in xrange(100):#run k epochs
     error_addup=0
-    #for i in xrange(train_set.shape[0]): #an epoch
-    for i in xrange(100): #an epoch
+    for i in xrange(train_batches): #an epoch
+    #for i in xrange(100): #an epoch
         error_addup=RNNobj.update_fun(train_gfs[batch*i:batch*(i+1)],train_pm25in[batch*i:batch*(i+1)],train_pm25target[batch*i:batch*(i+1)])+error_addup
-        if i%(train_set.shape[0]/3) == 0 and i >0:
-	    error=error_addup/i
-            print ("batch %(batch)d, error=%(error)f" % ({"batch": i, "error": error}))
-    error=error_addup/i
+        if i%(train_batches/3) == 0:
+	    error=error_addup/(i+1)
+            print ("batch %(batch)d, error=%(error)f" % ({"batch": i+1, "error": error}))
+    error=error_addup/(i+1)
     print ("   epoch %(epoch)d, error=%(error)f" % ({"epoch": k+1, "error": error}))
     
     valid_error_addup=0
-    #for i in xrange(valid_set.shape[0]): #an epoch
-    for i in xrange(100):
+    for i in xrange(valid_batches): #an epoch
+    #for i in xrange(100):
         valid_error_addup=RNNobj.valid_fun(valid_gfs[batch*i:batch*(i+1)],valid_pm25in[batch*i:batch*(i+1)],valid_pm25target[batch*i:batch*(i+1)])+valid_error_addup
-        if i%(valid_set.shape[0]/3) == 0 and i >0:
-            #error=valid_error_addup/i
-	    print ("batch %(batch)d, validation error:"%({"batch":i}))
-            #print error.transpose()
+        if i%(valid_batches/3) == 0:
+            #error=valid_error_addup/(i+1)
+	    print ("batch %(batch)d, validation error:"%({"batch":i+1}))
+            #print error
             #print ("batch %(batch)d, validation error=%(error)f" % ({"batch": i, "error": error}))
-    error=valid_error_addup/i
+    error=valid_error_addup/(i+1)
     print ("epoch %(epoch)d, validation error:"%({"epoch":k+1}))
-    print error.transpose()
+    print error
     #print ("   validation epoch %(epoch)d, validation error=%(error)f" % ({"epoch": k, "error": error}))
 
 '''
