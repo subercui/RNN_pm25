@@ -145,9 +145,9 @@ print '... building the model'
 
 RNNobj = Model(
     input_size=18+2,
-    hidden_size=10,
+    hidden_size=40,
     output_size=1,
-    stack_size=1, # make this bigger, but makes compilation slow
+    stack_size=2, # make this bigger, but makes compilation slow
     celltype=LSTM, # use RNN or LSTM
     steps=40
 )

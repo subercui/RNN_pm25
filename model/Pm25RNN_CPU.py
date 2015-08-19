@@ -98,8 +98,8 @@ class Model(object):
 print '... loading data'
 today=datetime.today()
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
-#dataset='/data/pm25data/dataset/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
-dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
+dataset='/data/pm25data/dataset/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
+#dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)
 data=np.asarray(data,dtype=theano.config.floatX)
