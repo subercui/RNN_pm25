@@ -9,7 +9,7 @@ from theano_lstm import LSTM, RNN, StackedCells, Layer, create_optimization_upda
 theano.config.compute_test_value = 'off'
 theano.config.floatX = 'float32'
 theano.config.mode='FAST_RUN'
-theano.config.profile='True'
+theano.config.profile='False'
 theano.config.scan.allow_gc='False'
 #theano.config.device = 'gpu'
         
@@ -82,7 +82,7 @@ class Model:
             outputs=self.cost,
             updates=updates,
             name='update_fun',
-            profile=True,
+            profile=False,
             allow_input_downcast=True)
             
     def create_validate_function(self):
@@ -108,6 +108,7 @@ data=cPickle.load(f)
 data=np.asarray(data,dtype=theano.config.floatX)
 f.close()
 #风速绝对化，记得加入
+data[:,:,2]=np.sqrt(data[:,:,2]**2+data[:,:,3]**2)
 #data scale and split
 para_min=np.amin(data[:,:,0:data.shape[2]-1],axis=0)#沿着0 dim example方向求最值
 para_max=np.amax(data[:,:,0:data.shape[2]-1],axis=0)
@@ -136,9 +137,9 @@ print '... building the model'
 
 RNNobj = Model(
     input_size=18+2,
-    hidden_size=10,
+    hidden_size=40,
     output_size=1,
-    stack_size=1, # make this bigger, but makes compilation slow
+    stack_size=2, # make this bigger, but makes compilation slow
     celltype=LSTM, # use RNN or LSTM
     steps=40
 )
