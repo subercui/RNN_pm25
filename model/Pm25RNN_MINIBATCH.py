@@ -101,8 +101,8 @@ class Model:
 print '... loading data'
 today=datetime.today()
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
-#dataset='/data/pm25data/dataset/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
-dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
+dataset='/data/pm25data/dataset/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
+#dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)
 data=np.asarray(data,dtype=theano.config.floatX)
@@ -184,12 +184,14 @@ for k in xrange(100):#run k epochs
     print error
     #print ("   validation epoch %(epoch)d, validation error=%(error)f" % ({"epoch": k, "error": error}))
 
-'''
-gfs=np.arange(24).reshape(4,6)
-#gfs=theano.shared(name='gfss',value=np.arange(24).reshape(4,6).astype(theano.config.floatX))
-pm25in=np.arange(4).reshape(4,1)
-#pm25in=theano.shared(name='pm25inn',value=np.arange(4).reshape(4,1).astype(theano.config.floatX))
-a=RNNobj(gfs,pm25in)
-pm25target=np.arange(2).reshape(2,1)
-RNNobj.update_fun(gfs,pm25in,pm25target)
-'''
+##############
+# SAVE MODEL #
+##############
+savedir='/data/pm25data/model/Model0831LSTMs2h40.pkl.gz'
+save_file = gzip.open(savedir, 'wb')
+cPickle.dump(RNNobj.model.params, save_file, -1)
+cPickle.dump(para_min, save_file, -1)#scaling paras
+cPickle.dump(para_max, save_file, -1)
+save_file.close()
+
+print ('model saved at '+savedir)
