@@ -12,6 +12,32 @@ theano.config.mode='FAST_RUN'
 theano.config.profile='False'
 theano.config.scan.allow_gc='False'
 #theano.config.device = 'gpu'
+
+def create_shared(out_size, in_size=None, name=None):
+    """
+    Creates a shared matrix or vector
+    using the given in_size and out_size.
+
+    Inputs
+    ------
+
+    out_size int            : outer dimension of the
+                              vector or matrix
+    in_size  int (optional) : for a matrix, the inner
+                              dimension.
+
+    Outputs
+    -------
+
+    theano shared : the shared matrix, with random numbers in it
+
+    """
+
+    if in_size is None:
+        return theano.shared(np.zeros((out_size, ),dtype=theano.config.floatX), name=name)
+    else:
+        return theano.shared(np.zeros((out_size, in_size),dtype=theano.config.floatX), name=name)
+
         
 class Model:
     """
@@ -22,6 +48,7 @@ class Model:
     """
     def __init__(self, hidden_size, input_size, output_size, stack_size=1, celltype=RNN,steps=40):
         # declare model
+        self.celltype=celltype
         self.model = StackedCells(input_size, celltype=celltype, layers =[hidden_size] * stack_size)
         # add a classifier:
         self.model.layers.append(Layer(hidden_size, output_size, activation = T.tanh))
@@ -53,7 +80,20 @@ class Model:
         gfs=self.gfs
         pm25in=self.pm25in
         #初始第一次前传
-        self.layerstatus=self.model.forward(T.concatenate([gfs[:,0],gfs[:,1],gfs[:,2],pm25in[:,0],pm25in[:,1],self.cnt[:,:,0]],axis=1))
+        x=T.concatenate([gfs[:,0],gfs[:,1],gfs[:,2],pm25in[:,0],pm25in[:,1],self.cnt[:,:,0]],axis=1)
+        if self.celltype==RNN:
+            init_hiddens = [(T.repeat(T.shape_padleft(create_shared(layer.hidden_size, name="RNN.initial_hidden_state")),
+                                      x.shape[0], axis=0)
+                             if x.ndim > 1 else create_shared(layer.hidden_size, name="RNN.initial_hidden_state"))
+                            if hasattr(layer, 'initial_hidden_state') else None
+                            for layer in self.model.layers]
+        if self.celltype==LSTM:
+            init_hiddens = [(T.repeat(T.shape_padleft(create_shared(layer.hidden_size * 2, name="LSTM.initial_hidden_state")),
+                                      x.shape[0], axis=0)
+                             if x.ndim > 1 else create_shared(layer.hidden_size * 2, name="LSTM.initial_hidden_state"))
+                            if hasattr(layer, 'initial_hidden_state') else None
+                            for layer in self.model.layers]
+        self.layerstatus=self.model.forward(x,init_hiddens)
         #results.shape?40*1
         self.results=self.layerstatus[-1]
         if self.steps > 1:
