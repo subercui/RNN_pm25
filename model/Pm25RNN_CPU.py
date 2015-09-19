@@ -10,6 +10,8 @@ from theano_lstm import LSTM, RNN, StackedCells, Layer, create_optimization_upda
 theano.config.compute_test_value = 'off'
 theano.config.floatX = 'float32'
 theano.config.mode='FAST_RUN'
+#theano.config.profile='True'
+theano.config.scan.allow_gc='False'
 #theano.config.device = 'gpu'
         
 class Model(object):
@@ -48,27 +50,24 @@ class Model(object):
         
     def create_prediction(self):
         def oneStep(gfs_tm2,gfs_tm1,gfs_t,pm25_tm2,pm25_tm1,*prev_hiddens):
-            input_x=cu.gpu_from_host(T.concatenate([gfs_tm2,gfs_tm1,gfs_t,pm25_tm2,pm25_tm1],axis=0))
+            input_x=T.concatenate([gfs_tm2,gfs_tm1,gfs_t,pm25_tm2,pm25_tm1],axis=0)
             new_states = self.model.forward(input_x, prev_hiddens)
             #错位之后返回
             return [new_states[-1]]+new_states[:-1]
-        
-        gfs=self.gfs
-        initial_predict=self.pm25in
             
         result, updates = theano.scan(oneStep,
                           n_steps=self.steps,
-                          sequences=[dict(input=gfs, taps=[-2,-1,-0])],
-                          outputs_info=[dict(initial=initial_predict, taps=[-2,-1])] + [dict(initial=layer.initial_hidden_state, taps=[-1]) for layer in self.model.layers if hasattr(layer, 'initial_hidden_state')])
+                          sequences=[dict(input=self.gfs, taps=[-2,-1,-0])],
+                          outputs_info=[dict(initial=self.pm25in, taps=[-2,-1])] + [dict(initial=layer.initial_hidden_state, taps=[-1]) for layer in self.model.layers if hasattr(layer, 'initial_hidden_state')])
         #根据oneStep，result的结果list有两个元素，result[0]是new_stats[-1]即最后一层输出的array，result[1]是之前层
         return result[0]
         
     def create_cost_fun (self):
         #可能改cost function，记得                                 
-        self.cost = cu.gpu_from_host((self.predictions - self.pm25target).norm(L=2) / self.steps)
+        self.cost = (self.predictions - self.pm25target).norm(L=2) / self.steps
         
     def create_valid_error(self):
-        self.valid_error=cu.gpu_from_host(T.abs_(self.predictions - self.pm25target))
+        self.valid_error=T.abs_(self.predictions - self.pm25target)
         
     def create_predict_function(self):
         self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in],outputs =self.predictions,allow_input_downcast=True)
@@ -79,6 +78,8 @@ class Model(object):
             inputs=[self.gfs,self.pm25in, self.pm25target],
             outputs=self.cost,
             updates=updates,
+            name='update_fun',
+            profile=True,
             allow_input_downcast=True)
     
     def create_validate_function(self):
@@ -145,7 +146,8 @@ print '... training'
 for k in xrange(100):#run k epochs
     error_addup=0
     for i in xrange(train_set.shape[0]): #an epoch
-        error_addup=np.asarray(RNNobj.update_fun(train_gfs[i],train_pm25in[i],train_pm25target[i]))+error_addup
+    #for i in xrange(100): #an epoch
+        error_addup=RNNobj.update_fun(train_gfs[i],train_pm25in[i],train_pm25target[i])+error_addup
         if i%(train_set.shape[0]/3) == 0 and i >0:
 	    error=error_addup/i
             print ("batch %(batch)d, error=%(error)f" % ({"batch": i, "error": error}))
@@ -154,7 +156,8 @@ for k in xrange(100):#run k epochs
     
     valid_error_addup=0
     for i in xrange(valid_set.shape[0]): #an epoch
-        valid_error_addup=np.asarray(RNNobj.valid_fun(valid_gfs[i],valid_pm25in[i],valid_pm25target[i]))+valid_error_addup
+    #for i in xrange(100):
+        valid_error_addup=RNNobj.valid_fun(valid_gfs[i],valid_pm25in[i],valid_pm25target[i])+valid_error_addup
         if i%(valid_set.shape[0]/3) == 0 and i >0:
             #error=valid_error_addup/i
 	    print ("batch %(batch)d, validation error:"%({"batch":i}))

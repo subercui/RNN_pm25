@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import theano, theano.tensor as T
-import theano.sandbox.cuda.basic_ops as cu
 import numpy as np
 import theano_lstm
 import random
@@ -10,27 +9,31 @@ from theano_lstm import LSTM, RNN, StackedCells, Layer, create_optimization_upda
 theano.config.compute_test_value = 'off'
 theano.config.floatX = 'float32'
 theano.config.mode='FAST_RUN'
+#theano.config.profile='True'
+theano.config.scan.allow_gc='False'
 #theano.config.device = 'gpu'
         
-class Model(object):
+class Model:
     """
     Simple predictive model for forecasting words from
     sequence using LSTMs. Choose how many LSTMs to stack
     what size their memory should be, and how many
     words can be predicted.
     """
-    def __init__(self, hidden_size, input_size, output_size, stack_size=1, celltype=RNN):
+    def __init__(self, hidden_size, input_size, output_size, stack_size=1, celltype=RNN,steps=40):
         # declare model
         self.model = StackedCells(input_size, celltype=celltype, layers =[hidden_size] * stack_size)
         # add a classifier:
         self.model.layers.append(Layer(hidden_size, output_size, activation = T.tanh))
         # inputs are matrices of indices,
         # each row is a sentence, each column a timestep
-        self.steps=40
-        self.gfs=T.matrix('gfs')#输入gfs数据
-        self.pm25in=T.matrix('pm25in')#pm25初始数据部分
-        self.pm25target=T.matrix('pm25target')#输出的目标target
-        #self.srng = T.shared_randomstreams.RandomStreams(np.random.randint(0, 1024))
+        self.steps=steps
+        self.gfs=T.matrix()#输入gfs数据
+        self.pm25in=T.matrix()#pm25初始数据部分
+        self.pm25target=T.matrix()#输出的目标target
+        self.layerstatus=None
+        self.results=None
+        self.srng = T.shared_randomstreams.RandomStreams(np.random.randint(0, 1024))
         # create symbolic variables for prediction:(就是做一次整个序列完整的进行预测，得到结果是prediction)
         self.predictions = self.create_prediction()
         # create gradient training functions:
@@ -44,32 +47,30 @@ class Model(object):
         
     @property
     def params(self):
-        return self.model.params      
+        return self.model.params
         
-    def create_prediction(self):
-        def oneStep(gfs_tm2,gfs_tm1,gfs_t,pm25_tm2,pm25_tm1,*prev_hiddens):
-            input_x=cu.gpu_from_host(T.concatenate([gfs_tm2,gfs_tm1,gfs_t,pm25_tm2,pm25_tm1],axis=0))
-            new_states = self.model.forward(input_x, prev_hiddens)
-            #错位之后返回
-            return [new_states[-1]]+new_states[:-1]
-        
+    def create_prediction(self):#做一次predict的方法
         gfs=self.gfs
-        initial_predict=self.pm25in
-            
-        result, updates = theano.scan(oneStep,
-                          n_steps=self.steps,
-                          sequences=[dict(input=gfs, taps=[-2,-1,-0])],
-                          outputs_info=[dict(initial=initial_predict, taps=[-2,-1])] + [dict(initial=layer.initial_hidden_state, taps=[-1]) for layer in self.model.layers if hasattr(layer, 'initial_hidden_state')])
-        #根据oneStep，result的结果list有两个元素，result[0]是new_stats[-1]即最后一层输出的array，result[1]是之前层
-        return result[0]
+        pm25in=self.pm25in
+        #初始第一次前传
+        self.layerstatus=self.model.forward(T.concatenate([gfs[0],gfs[1],gfs[2],pm25in[0],pm25in[1]],axis=0))
+        self.results=T.shape_padright(self.layerstatus[-1])
+        if self.steps > 1:
+            self.layerstatus=self.model.forward(T.concatenate([gfs[1],gfs[2],gfs[3],pm25in[1],self.results[0]],axis=0),self.layerstatus)
+            self.results=T.concatenate([self.results,T.shape_padright(self.layerstatus[-1])],axis=0)      
+            #前传之后step-2次
+            for i in xrange(2,self.steps):
+                self.layerstatus=self.model.forward(T.concatenate([gfs[i],gfs[i+1],gfs[i+2],self.results[i-2],self.results[i-1]],axis=0),self.layerstatus)
+                #need T.shape_padright???
+                self.results=T.concatenate([self.results,T.shape_padright(self.layerstatus[-1])],axis=0)
+        return self.results
         
-    def create_cost_fun (self):
-        #可能改cost function，记得                                 
-        self.cost = cu.gpu_from_host((self.predictions - self.pm25target).norm(L=2) / self.steps)
-        
+    def create_cost_fun (self):                                 
+        self.cost = (self.predictions - self.pm25target).norm(L=2) / self.steps
+
     def create_valid_error(self):
-        self.valid_error=cu.gpu_from_host(T.abs_(self.predictions - self.pm25target))
-        
+        self.valid_error=T.abs_(self.predictions - self.pm25target)
+                
     def create_predict_function(self):
         self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in],outputs =self.predictions,allow_input_downcast=True)
                                  
@@ -79,8 +80,10 @@ class Model(object):
             inputs=[self.gfs,self.pm25in, self.pm25target],
             outputs=self.cost,
             updates=updates,
+            name='update_fun',
+            profile=True,
             allow_input_downcast=True)
-    
+            
     def create_validate_function(self):
         self.valid_fun = theano.function(
             inputs=[self.gfs,self.pm25in, self.pm25target],
@@ -90,6 +93,17 @@ class Model(object):
         
     def __call__(self, gfs,pm25in):
         return self.pred_fun(gfs,pm25in)
+'''        
+# construct model & theano functions:
+RNNobj = Model(
+    input_size=18+2,
+    hidden_size=10,
+    output_size=1,
+    stack_size=1, # make this bigger, but makes compilation slow
+    celltype=RNN, # use RNN or LSTM
+    steps=2
+)
+'''
 
 #############
 # LOAD DATA #
@@ -131,10 +145,11 @@ print '... building the model'
 
 RNNobj = Model(
     input_size=18+2,
-    hidden_size=10,
+    hidden_size=40,
     output_size=1,
-    stack_size=1, # make this bigger, but makes compilation slow
+    stack_size=2, # make this bigger, but makes compilation slow
     celltype=LSTM, # use RNN or LSTM
+    steps=40
 )
 
 ###############
@@ -145,7 +160,8 @@ print '... training'
 for k in xrange(100):#run k epochs
     error_addup=0
     for i in xrange(train_set.shape[0]): #an epoch
-        error_addup=np.asarray(RNNobj.update_fun(train_gfs[i],train_pm25in[i],train_pm25target[i]))+error_addup
+    #for i in xrange(100): #an epoch
+        error_addup=RNNobj.update_fun(train_gfs[i],train_pm25in[i],train_pm25target[i])+error_addup
         if i%(train_set.shape[0]/3) == 0 and i >0:
 	    error=error_addup/i
             print ("batch %(batch)d, error=%(error)f" % ({"batch": i, "error": error}))
@@ -154,7 +170,8 @@ for k in xrange(100):#run k epochs
     
     valid_error_addup=0
     for i in xrange(valid_set.shape[0]): #an epoch
-        valid_error_addup=np.asarray(RNNobj.valid_fun(valid_gfs[i],valid_pm25in[i],valid_pm25target[i]))+valid_error_addup
+    #for i in xrange(100):
+        valid_error_addup=RNNobj.valid_fun(valid_gfs[i],valid_pm25in[i],valid_pm25target[i])+valid_error_addup
         if i%(valid_set.shape[0]/3) == 0 and i >0:
             #error=valid_error_addup/i
 	    print ("batch %(batch)d, validation error:"%({"batch":i}))
@@ -164,17 +181,13 @@ for k in xrange(100):#run k epochs
     print ("epoch %(epoch)d, validation error:"%({"epoch":k+1}))
     print error.transpose()
     #print ("   validation epoch %(epoch)d, validation error=%(error)f" % ({"epoch": k, "error": error}))
-
-       
-
 '''
+
 gfs=np.arange(24).reshape(4,6)
+#gfs=theano.shared(name='gfss',value=np.arange(24).reshape(4,6).astype(theano.config.floatX))
 pm25in=np.arange(4).reshape(4,1)
+#pm25in=theano.shared(name='pm25inn',value=np.arange(4).reshape(4,1).astype(theano.config.floatX))
+a=RNNobj(gfs,pm25in)
 pm25target=np.arange(2).reshape(2,1)
-#看输出a可以发现shape是（2，1），第一维2是两次step，第二维就是每次的结果了
-#于是target要对应，第一维是对应每个小时，第二维是具体结果；这还是只一个example的target
-
-a=RNNobj(gfs,pm25in,2)
-RNNobj.update_fun(gfs,pm25in,np.arange(2).reshape(2,1),2)
+RNNobj.update_fun(gfs,pm25in,pm25target)
 '''
-
