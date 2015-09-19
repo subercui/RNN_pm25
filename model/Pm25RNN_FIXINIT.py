@@ -100,10 +100,11 @@ class Model:
 #############
 # LOAD DATA #
 #############
+print 'FIX INIT'
 print '... loading data'
 today=datetime.today()
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
-dataset='/data/pm25data/dataset/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
+dataset='/data/pm25data/dataset/tRNNPm25Dataset20150915_t100p100shuffled.pkl.gz'
 #dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)
@@ -189,7 +190,7 @@ for k in xrange(100):#run k epochs
 ##############
 # SAVE MODEL #
 ##############
-savedir='/data/pm25data/model/Model0907LSTMs2h40.pkl.gz'
+savedir='/data/pm25data/model/Model0915LSTMs2h40.pkl.gz'
 save_file = gzip.open(savedir, 'wb')
 cPickle.dump(RNNobj.model.params, save_file, -1)
 cPickle.dump(para_min, save_file, -1)#scaling paras

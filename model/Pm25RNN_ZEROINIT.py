@@ -48,6 +48,7 @@ class Model:
     """
     def __init__(self, hidden_size, input_size, output_size, stack_size=1, celltype=RNN,steps=40):
         # declare model
+        self.celltype=celltype
         self.model = StackedCells(input_size, celltype=celltype, layers =[hidden_size] * stack_size)
         # add a classifier:
         self.model.layers.append(Layer(hidden_size, output_size, activation = T.tanh))
@@ -79,8 +80,21 @@ class Model:
         gfs=self.gfs
         pm25in=self.pm25in
         #初始第一次前传
-        self.layerstatus=self.model.forward(T.concatenate([gfs[:,0],gfs[:,1],gfs[:,2],pm25in[:,0],pm25in[:,1],self.cnt[:,:,0]],axis=1))
-	#results.shape?40*1
+        x=T.concatenate([gfs[:,0],gfs[:,1],gfs[:,2],pm25in[:,0],pm25in[:,1],self.cnt[:,:,0]],axis=1)
+        if self.celltype==RNN:
+            init_hiddens = [(T.repeat(T.shape_padleft(create_shared(layer.hidden_size, name="RNN.initial_hidden_state")),
+                                      x.shape[0], axis=0)
+                             if x.ndim > 1 else create_shared(layer.hidden_size, name="RNN.initial_hidden_state"))
+                            if hasattr(layer, 'initial_hidden_state') else None
+                            for layer in self.model.layers]
+        if self.celltype==LSTM:
+            init_hiddens = [(T.repeat(T.shape_padleft(create_shared(layer.hidden_size * 2, name="LSTM.initial_hidden_state")),
+                                      x.shape[0], axis=0)
+                             if x.ndim > 1 else create_shared(layer.hidden_size * 2, name="LSTM.initial_hidden_state"))
+                            if hasattr(layer, 'initial_hidden_state') else None
+                            for layer in self.model.layers]
+        self.layerstatus=self.model.forward(x,init_hiddens)
+        #results.shape?40*1
         self.results=self.layerstatus[-1]
         if self.steps > 1:
             self.layerstatus=self.model.forward(T.concatenate([gfs[:,1],gfs[:,2],gfs[:,3],pm25in[:,1],self.results,self.cnt[:,:,1]],axis=1),self.layerstatus)
@@ -127,7 +141,7 @@ class Model:
 print '... loading data'
 today=datetime.today()
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
-dataset='/data/pm25data/dataset/tRNNPm25Dataset20150915_t100p100shuffled.pkl.gz'
+dataset='/data/pm25data/dataset/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
 #dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)
@@ -213,7 +227,7 @@ for k in xrange(100):#run k epochs
 ##############
 # SAVE MODEL #
 ##############
-savedir='/data/pm25data/model/Model0915LSTMs2h40ZEROINIT.pkl.gz'
+savedir='/data/pm25data/model/Model0906LSTMs2h40.pkl.gz'
 save_file = gzip.open(savedir, 'wb')
 cPickle.dump(RNNobj.model.params, save_file, -1)
 cPickle.dump(para_min, save_file, -1)#scaling paras
