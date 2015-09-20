@@ -38,6 +38,9 @@ class Model(object):
         # create symbolic variables for prediction:(就是做一次整个序列完整的进行预测，得到结果是prediction)
         self.predictions = self.create_prediction()
         self.create_predict_function()
+        self.pm25target=T.matrix('pm25target')#输出的目标target，这一版把target维度改了
+        self.create_valid_error()
+        self.create_validate_function()
         '''上面几步的意思就是先把公式写好'''
         
         
@@ -64,7 +67,17 @@ class Model(object):
                       
     def create_predict_function(self):
         self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in,self.cnt],outputs =self.predictions,allow_input_downcast=True)
-                                        
+    
+    def create_valid_error(self):
+        self.valid_error=T.mean(T.abs_(self.predictions - self.pm25target),axis=0)                                   
+    
+    def create_validate_function(self):
+        self.valid_fun = theano.function(
+            inputs=[self.gfs,self.pm25in, self.pm25target,self.cnt],
+            outputs=self.valid_error,
+            allow_input_downcast=True
+        )                                                                                                            
+                                                                                                                                                                                                                                                                                                                                        
     def __call__(self, gfs,pm25in):
         return self.pred_fun(gfs,pm25in)
         
@@ -79,7 +92,7 @@ RNNobj = Model(
 )
 
 #load model
-f=gzip.open('/Users/subercui/Model0831LSTMs2h40.pkl.gz', 'rb')
+f=gzip.open('/Users/subercui/RNNModel20150917.pkl.gz', 'rb')
 #for i in range(len(RNNobj.model.layers)):
 #    RNNobj.model.layers[i].params=cPickle.load(f)
 RNNobj.model.params=cPickle.load(f)
@@ -93,7 +106,8 @@ f.close()
 #############
 print '... loading data'
 today=datetime.today()
-dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
+#dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
+dataset='/Users/subercui/Git/RNN_pm25/test/RNNTrueTest20150918_t100p100.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)
 data=np.asarray(data,dtype=theano.config.floatX)
@@ -103,7 +117,7 @@ data[:,:,2]=np.sqrt(data[:,:,2]**2+data[:,:,3]**2)
 #data scale and split
 data[:,:,0:data.shape[2]-1]=(data[:,:,0:data.shape[2]-1]-para_min)/(para_max-para_min)
 data[:,:,-1]=data[:,:,-1]/100.
-train_set, valid_set=np.split(data,[int(0.8*len(data))],axis=0)
+train_set, valid_set=np.split(data,[int(0.99*len(data))],axis=0)
 
 def construct(data_xy,borrow=True):
     data_gfs,data_pm25=np.split(data_xy,[data_xy.shape[2]-1],axis=2)
@@ -119,15 +133,20 @@ def construct(data_xy,borrow=True):
 train_gfs,train_pm25in,train_pm25target=construct(train_set)
 valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
 
-###############
+###########
 # Predict #
-###############
-print '... predicting'
+###########
+'''print '... predicting'
 
 batch=1
 cnt=np.repeat(np.eye(steps,dtype=theano.config.floatX).reshape(1,steps,steps),batch,axis=0)
 #a=RNNobj.pred_fun(train_gfs[0:20],train_pm25in[0:20])
-a=RNNobj.pred_fun(train_gfs[0][None,:],train_pm25in[0][None,:],cnt)
+testpm25in=np.array(train_pm25in[0][None,:])
+testpm25in[0,0],testpm25in[0,1]=1.,1.
+a=RNNobj.pred_fun(train_gfs[0][None,:],testpm25in,cnt)
+b=100*a
+print testpm25in
+print b
 #interp
 x = np.arange(0,123,3)
 y = np.zeros(41)
@@ -135,4 +154,15 @@ y[0]=train_pm25in[0][-1,:]
 y[1:]=a[0,:]
 func = interp1d(x, y,'cubic')
 xnew=np.arange(1,121)
-output=func(xnew)
+output=func(xnew)'''
+
+############
+# Validate #
+############
+print '... predicting'
+
+batch=4800
+cnt=np.repeat(np.eye(steps,dtype=theano.config.floatX).reshape(1,steps,steps),batch,axis=0)
+valid_error=RNNobj.valid_fun(train_gfs[0:batch],train_pm25in[0:batch],train_pm25target[0:batch],cnt)
+#valid_error=RNNobj.valid_fun(train_gfs,train_pm25in,train_pm25target,cnt)
+print 100*valid_error
