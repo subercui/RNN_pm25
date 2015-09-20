@@ -5,7 +5,7 @@ import theano_lstm
 import random
 import cPickle, gzip
 from datetime import datetime
-from theano_lstm import LSTM, RNN, StackedCells, Layer, create_optimization_updates, masked_loss
+from theano_lstm import LSTM, RNN, StackedCells, Layer, create_optimization_updates
 theano.config.compute_test_value = 'off'
 theano.config.floatX = 'float32'
 theano.config.mode='FAST_RUN'
@@ -79,15 +79,21 @@ class Model:
         gfs=self.gfs
         pm25in=self.pm25in
         #初始第一次前传
-        self.layerstatus=self.model.forward(T.concatenate([gfs[:,0],gfs[:,1],gfs[:,2],pm25in[:,0],pm25in[:,1],self.cnt[:,:,0]],axis=1))
+        gfs_x=T.concatenate([gfs[:,0],gfs[:,1],gfs[:,2],gfs[:,3],gfs[:,4],gfs[:,5],gfs[:,6],gfs[:,7],gfs[:,8]],axis=1)
+        pm25in_x=T.concatenate([pm25in[:,0],pm25in[:,1],pm25in[:,2],pm25in[:,3],pm25in[:,4],pm25in[:,5],pm25in[:,6],pm25in[:,7]],axis=1)
+        self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,0]],axis=1))
 	#results.shape?40*1
         self.results=self.layerstatus[-1]
         if self.steps > 1:
-            self.layerstatus=self.model.forward(T.concatenate([gfs[:,1],gfs[:,2],gfs[:,3],pm25in[:,1],self.results,self.cnt[:,:,1]],axis=1),self.layerstatus)
+            gfs_x=T.concatenate([gfs_x[:,6:],gfs[:,9]],axis=1)
+            pm25in_x=T.concatenate([pm25in_x[:,1:],self.results],axis=1)
+            self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,1]],axis=1),self.layerstatus)
             self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)      
             #前传之后step-2次
             for i in xrange(2,self.steps):
-                self.layerstatus=self.model.forward(T.concatenate([gfs[:,i],gfs[:,i+1],gfs[:,i+2],T.shape_padright(self.results[:,i-2]),T.shape_padright(self.results[:,i-1]),self.cnt[:,:,i]],axis=1),self.layerstatus)
+                gfs_x=T.concatenate([gfs_x[:,6:],gfs[:,i+8]],axis=1)
+                pm25in_x=T.concatenate([pm25in_x[:,1:],T.shape_padright(self.results[:,i-1])],axis=1)
+                self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,i]],axis=1),self.layerstatus)
                 #need T.shape_padright???
                 self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
         return self.results
@@ -127,8 +133,8 @@ class Model:
 print '... loading data'
 today=datetime.today()
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
-dataset='/data/pm25data/dataset/tRNNPm25Dataset20150915_t100p100shuffled.pkl.gz'
-#dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
+#dataset='/data/pm25data/dataset/tRNNPm25Dataset20150915_t100p100shuffled.pkl.gz'
+dataset='/Users/subercui/48stepsRNNPm25Dataset20150920_t100p100.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)
 data=np.asarray(data,dtype=theano.config.floatX)
@@ -144,7 +150,7 @@ train_set, valid_set=np.split(data,[int(0.8*len(data))],axis=0)
 
 def construct(data_xy,borrow=True):
     data_gfs,data_pm25=np.split(data_xy,[data_xy.shape[2]-1],axis=2)
-    data_pm25in,data_pm25target=np.split(data_pm25,[2],axis=1)
+    data_pm25in,data_pm25target=np.split(data_pm25,[8],axis=1)
     #这里的维度改了
     data_pm25target=data_pm25target.reshape(data_pm25target.shape[0],data_pm25target.shape[1])
     #加入shared构造，记得加入,theano禁止调用
@@ -162,7 +168,7 @@ valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
 print '... building the model'
 steps=40
 RNNobj = Model(
-    input_size=18+2+steps,
+    input_size=6*9+1*8+steps,
     hidden_size=40,
     output_size=1,
     stack_size=2, # make this bigger, but makes compilation slow
@@ -213,7 +219,7 @@ for k in xrange(100):#run k epochs
 ##############
 # SAVE MODEL #
 ##############
-savedir='/data/pm25data/model/Model0915LSTMs2h40ZEROINIT.pkl.gz'
+savedir='/data/pm25data/model/24hRecModel0920LSTMs2h40ZEROINIT.pkl.gz'
 save_file = gzip.open(savedir, 'wb')
 cPickle.dump(RNNobj.model.params, save_file, -1)
 cPickle.dump(para_min, save_file, -1)#scaling paras
