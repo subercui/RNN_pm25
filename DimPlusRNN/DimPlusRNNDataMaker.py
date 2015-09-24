@@ -143,7 +143,7 @@ class RNNPm25Dataset(object):
             current=self.starttime+datetime.timedelta(hours=3*i)-datetime.timedelta(hours=8)#做时区变换，转回GMT
             #对于当前current所指的这一行，前steps-1个step上的数据可以从上个slice获得
             for k in range(self.n_location):
-                inputs[i+k*self.n_perpoint,0:self.steps-1,0:self.n_element-1]=inputs[i+k*self.n_perpoint-1,1:self.steps,0:self.n_element-1]
+                inputs[i+k*self.n_perpoint,0:self.steps-1,0:6]=inputs[i+k*self.n_perpoint-1,1:self.steps,0:6]
             #对于当前current所指的这一行，最后小时的六个数据需要以下重新读文件获得
             p_time=current+datetime.timedelta(hours=t_predict-3)
             #p_time就代表这一帧的时间，尝试打开对应文件
@@ -241,13 +241,24 @@ class RNNPm25Dataset(object):
                         for k in range(self.n_location):
                             inputs[i+k*self.n_perpoint,(h+21)/3,self.n_element-1]=inputs[i+k*self.n_perpoint,(h+21)/3-1,self.n_element-1]
                                         
+        '''time features, steps*3 dimentions for every slice'''
+        for i in range(0,self.n_perpoint):
+            current=self.starttime+datetime.timedelta(hours=3*i)
+            for h in range(-21,t_predict+3,3):#t_predict+3是保证取到最后那个小时
+                p_time=current+datetime.timedelta(hours=h)
+                for k in range(self.n_location):
+                    inputs[i+k*self.n_perpoint,(h+21)/3,6]=p_time.hour/24
+                    inputs[i+k*self.n_perpoint,(h+21)/3,7]=p_time.weekday()/7
+                    inputs[i+k*self.n_perpoint,(h+21)/3,8]=(p_time.month+today.day/30)/12
+            
+        
         '''amend data, enhance heavy pm25 and heavily changing days'''
         print 'enhance heavy data'
         repeat=10
         morerows=0
         moreindexlist=[]
         for i in range(inputs.shape[0]):
-            test = inputs[i,:,6]#寻找有用的典型例子
+            test = inputs[i,:,self.n_element-1]#寻找有用的典型例子
             if np.mean(test)>18 and np.var(test)>150:
                 morerows=morerows+repeat
                 moreindexlist.append(i)
@@ -266,7 +277,7 @@ if __name__ == '__main__':
     stop=(today-datetime.timedelta(days=6)).strftime('%Y%m%d')+'08'
     obj=RNNPm25Dataset(start=start,stop=stop)
     #obj=Pm25Dataset(lon=np.array([116.3883,117.20,121.48,106.54,118.78,113.66]),lat=np.array([39.3289,39.13,31.22,29.59,32.04,34.76]),start=start,stop=stop)
-    savefile(obj.input_data,savedir+'48stepsRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz')
+    savefile(obj.input_data,savedir+'DimPlusRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz')
     #np.savetxt(savedir+"Pm25Dataset"+today.strftime('%Y%m%d')+"_t45p100.txt", obj.input_data, fmt='%.2f')
     np.random.shuffle(obj.input_data)
-    savefile(obj.input_data,savedir+'48stepsRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100shuffled.pkl.gz')
+    savefile(obj.input_data,savedir+'DimPlusRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100shuffled.pkl.gz')
