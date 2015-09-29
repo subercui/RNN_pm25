@@ -259,7 +259,7 @@ class RNNPm25Dataset(object):
         moreindexlist=[]
         for i in range(inputs.shape[0]):
             test = inputs[i,:,self.n_element-1]#寻找有用的典型例子
-            if np.mean(test)>18 and np.var(test)>150:
+            if np.mean(test)>30 and np.var(test)>180:
                 morerows=morerows+repeat
                 moreindexlist.append(i)
         more=np.zeros((morerows,inputs.shape[1],inputs.shape[2]))

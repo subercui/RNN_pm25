@@ -247,7 +247,7 @@ class RNNPm25Dataset(object):
         moreindexlist=[]
         for i in range(inputs.shape[0]):
             test = inputs[i,:,6]#寻找有用的典型例子
-            if np.mean(test)>18 and np.var(test)>150:
+            if np.mean(test)>30 and np.var(test)>150:
                 morerows=morerows+repeat
                 moreindexlist.append(i)
         more=np.zeros((morerows,inputs.shape[1],inputs.shape[2]))
@@ -265,7 +265,7 @@ if __name__ == '__main__':
     stop=(today-datetime.timedelta(days=6)).strftime('%Y%m%d')+'08'
     obj=RNNPm25Dataset(start=start,stop=stop)
     #obj=Pm25Dataset(lon=np.array([116.3883,117.20,121.48,106.54,118.78,113.66]),lat=np.array([39.3289,39.13,31.22,29.59,32.04,34.76]),start=start,stop=stop)
-    savefile(obj.input_data,savedir+'tRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz')
+    savefile(obj.input_data,savedir+'RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz')
     #np.savetxt(savedir+"Pm25Dataset"+today.strftime('%Y%m%d')+"_t45p100.txt", obj.input_data, fmt='%.2f')
     np.random.shuffle(obj.input_data)
-    savefile(obj.input_data,savedir+'tRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100shuffled.pkl.gz')
+    savefile(obj.input_data,savedir+'RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100shuffled.pkl.gz')
