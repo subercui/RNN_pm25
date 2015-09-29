@@ -79,19 +79,23 @@ class Model:
         gfs=self.gfs
         pm25in=self.pm25in
         #初始第一次前传
-        gfs_x=T.concatenate([gfs[:,0],gfs[:,1],gfs[:,2],gfs[:,3],gfs[:,4],gfs[:,5],gfs[:,6],gfs[:,7],gfs[:,8]],axis=1)
-        pm25in_x=T.concatenate([pm25in[:,0],pm25in[:,1],pm25in[:,2],pm25in[:,3],pm25in[:,4],pm25in[:,5],pm25in[:,6],pm25in[:,7]],axis=1)
+        gfs_x=T.concatenate([gfs[:,0],gfs[:,1],gfs[:,2]],axis=1)
+        pm25in_x=T.concatenate([pm25in[:,0],pm25in[:,1]],axis=1)
         self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,0]],axis=1))
+        for i in xrange(1,7):#前6次（0-5），输出之前的先做的6个frame，之后第7次是第1个输出
+            gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,i+2]],axis=1)
+            pm25in_x=T.concatenate([pm25in_x[:,1:],pm25in[:,i+1]],axis=1)
+            self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,0]],axis=1))
 	#results.shape?40*1
         self.results=self.layerstatus[-1]
         if self.steps > 1:
-            gfs_x=T.concatenate([gfs_x[:,6:],gfs[:,9]],axis=1)
+            gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,9]],axis=1)
             pm25in_x=T.concatenate([pm25in_x[:,1:],self.results],axis=1)
             self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,1]],axis=1),self.layerstatus)
             self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)      
             #前传之后step-2次
             for i in xrange(2,self.steps):
-                gfs_x=T.concatenate([gfs_x[:,6:],gfs[:,i+8]],axis=1)
+                gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,i+8]],axis=1)
                 pm25in_x=T.concatenate([pm25in_x[:,1:],T.shape_padright(self.results[:,i-1])],axis=1)
                 self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,i]],axis=1),self.layerstatus)
                 #need T.shape_padright???
@@ -142,9 +146,9 @@ f.close()
 #风速绝对化，记得加入
 data[:,:,2]=np.sqrt(data[:,:,2]**2+data[:,:,3]**2)
 #data scale and split
-para_min=np.amin(data[:,:,0:data.shape[2]-1],axis=0)#沿着0 dim example方向求最值
-para_max=np.amax(data[:,:,0:data.shape[2]-1],axis=0)
-data[:,:,0:data.shape[2]-1]=(data[:,:,0:data.shape[2]-1]-para_min)/(para_max-para_min)
+para_min=np.amin(data[:,:,0:6],axis=0)#沿着0 dim example方向求最值
+para_max=np.amax(data[:,:,0:6],axis=0)
+data[:,:,0:6]=(data[:,:,0:6]-para_min)/(para_max-para_min)
 data[:,:,-1]=data[:,:,-1]/100.
 train_set, valid_set=np.split(data,[int(0.8*len(data))],axis=0)
 
@@ -168,10 +172,10 @@ valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
 print '... building the model'
 steps=40
 RNNobj = Model(
-    input_size=6*9+1*8+steps,
-    hidden_size=80,
+    input_size=9*3+1*2+steps,
+    hidden_size=40,
     output_size=1,
-    stack_size=4, # make this bigger, but makes compilation slow
+    stack_size=2, # make this bigger, but makes compilation slow
     celltype=LSTM, # use RNN or LSTM
     steps=steps
 )
@@ -219,7 +223,7 @@ for k in xrange(100):#run k epochs
 ##############
 # SAVE MODEL #
 ##############
-savedir='/data/pm25data/model/24hRecModel0920LSTMs4h80.pkl.gz'
+savedir='/data/pm25data/model/DimPlusModel0929LSTMs4h80.pkl.gz'
 save_file = gzip.open(savedir, 'wb')
 cPickle.dump(RNNobj.model.params, save_file, -1)
 cPickle.dump(para_min, save_file, -1)#scaling paras
