@@ -153,6 +153,9 @@ para_max=np.amax(data[:,:,0:6*width*width],axis=0)
 data[:,:,0:6*width*width]=(data[:,:,0:6*width*width]-para_min)/(para_max-para_min)
 data[:,:,-1*width*width]=data[:,:,-1*width*width]/100.
 train_set, valid_set=np.split(data,[int(0.8*len(data))],axis=0)
+#shuffle
+np.random.shuffle(train_set)
+np.random.shuffle(valid_set)
 
 def construct(data_xy,borrow=True):
     data_gfs,data_pm25=np.split(data_xy,[data_xy.shape[2]-1*width*width],axis=2)
