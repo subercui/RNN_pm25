@@ -13,6 +13,8 @@ theano.config.profile='False'
 theano.config.scan.allow_gc='False'
 #theano.config.device = 'gpu'
 
+width=6
+
 def create_shared(out_size, in_size=None, name=None):
     """
     Creates a shared matrix or vector
@@ -56,7 +58,7 @@ class Model:
         self.steps=steps
         self.gfs=T.tensor3('gfs')#输入gfs数据
         self.pm25in=T.tensor3('pm25in')#pm25初始数据部分
-        self.pm25target=T.matrix('pm25target')#输出的目标target，这一版把target维度改了
+        self.pm25target=T.tensor3('pm25target')#输出的目标target，这一版把target维度改了
         self.layerstatus=None
         self.results=None
         self.cnt = T.tensor3('cnt')
@@ -83,30 +85,30 @@ class Model:
         pm25in_x=T.concatenate([pm25in[:,0],pm25in[:,1]],axis=1)
         self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,0]],axis=1))
         for i in xrange(1,7):#前6次（0-5），输出之前的先做的6个frame，之后第7次是第1个输出
-            gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,i+2]],axis=1)
-            pm25in_x=T.concatenate([pm25in_x[:,1:],pm25in[:,i+1]],axis=1)
+            gfs_x=T.concatenate([gfs_x[:,9*width*width:],gfs[:,i+2]],axis=1)
+            pm25in_x=T.concatenate([pm25in_x[:,1*width*width:],pm25in[:,i+1]],axis=1)
             self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,0]],axis=1))
 	#results.shape?40*1
-        self.results=self.layerstatus[-1]
+        self.results=self.layerstatus[-1]#(n_example*n_output)
         if self.steps > 1:
-            gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,9]],axis=1)
-            pm25in_x=T.concatenate([pm25in_x[:,1:],self.results],axis=1)
+            gfs_x=T.concatenate([gfs_x[:,9*width*width:],gfs[:,9]],axis=1)
+            pm25in_x=T.concatenate([pm25in_x[:,1*width*width:],self.results],axis=1)
             self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,1]],axis=1),self.layerstatus)
-            self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)      
+            self.results=T.concatenate([self.results.dimshuffle((0,'x',1)),self.layerstatus[-1].dimshuffle((0,'x',1))],axis=1)#(n_example*steps*n_output)      
             #前传之后step-2次
             for i in xrange(2,self.steps):
-                gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,i+8]],axis=1)
-                pm25in_x=T.concatenate([pm25in_x[:,1:],T.shape_padright(self.results[:,i-1])],axis=1)
+                gfs_x=T.concatenate([gfs_x[:,9*width*width:],gfs[:,i+8]],axis=1)
+                pm25in_x=T.concatenate([pm25in_x[:,1*width*width:],self.results[:,i-1]],axis=1)
                 self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,i]],axis=1),self.layerstatus)
                 #need T.shape_padright???
-                self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
+                self.results=T.concatenate([self.results,self.layerstatus[-1].dimshuffle((0,'x',1))],axis=1)#(n_example*steps*n_output) 
         return self.results
         
     def create_cost_fun (self):                                 
         self.cost = (self.predictions - self.pm25target).norm(L=2)
 
     def create_valid_error(self):
-        self.valid_error=T.mean(T.abs_(self.predictions - self.pm25target),axis=0)
+        self.valid_error=T.mean(T.abs_(self.predictions[:,:,(width*width-1)/2] - self.pm25target[:,:,(width*width-1)/2]),axis=0)
                 
     def create_predict_function(self):
         self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in,self.cnt],outputs =self.predictions,allow_input_downcast=True)
@@ -137,26 +139,26 @@ class Model:
 print '... loading data'
 today=datetime.today()
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
-dataset='/data/pm25data/dataset/DimPlusRNNPm25Dataset20150929_t100p100shuffled.pkl.gz'
+dataset='/data/pm25data/dataset/WiderRNNPm25Dataset20151009_t100p100.pkl.gz'
 #dataset='/Users/subercui/48stepsRNNPm25Dataset20150920_t100p100.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)
 data=np.asarray(data,dtype=theano.config.floatX)
 f.close()
 #风速绝对化，记得加入
-data[:,:,2]=np.sqrt(data[:,:,2]**2+data[:,:,3]**2)
+data[:,:,2:6*width*width:6]=np.sqrt(data[:,:,2:6*width*width:6]**2+data[:,:,3:6*width*width:6]**2)
 #data scale and split
-para_min=np.amin(data[:,:,0:6],axis=0)#沿着0 dim example方向求最值
-para_max=np.amax(data[:,:,0:6],axis=0)
-data[:,:,0:6]=(data[:,:,0:6]-para_min)/(para_max-para_min)
-data[:,:,-1]=data[:,:,-1]/100.
+para_min=np.amin(data[:,:,0:6*width*width],axis=0)#沿着0 dim example方向求最值
+para_max=np.amax(data[:,:,0:6*width*width],axis=0)
+data[:,:,0:6*width*width]=(data[:,:,0:6*width*width]-para_min)/(para_max-para_min)
+data[:,:,-1*width*width]=data[:,:,-1*width*width]/100.
 train_set, valid_set=np.split(data,[int(0.8*len(data))],axis=0)
 
 def construct(data_xy,borrow=True):
-    data_gfs,data_pm25=np.split(data_xy,[data_xy.shape[2]-1],axis=2)
+    data_gfs,data_pm25=np.split(data_xy,[data_xy.shape[2]-1*width*width],axis=2)
     data_pm25in,data_pm25target=np.split(data_pm25,[8],axis=1)
     #这里的维度改了
-    data_pm25target=data_pm25target.reshape(data_pm25target.shape[0],data_pm25target.shape[1])
+    #data_pm25target=data_pm25target.reshape(data_pm25target.shape[0],data_pm25target.shape[1])
     #加入shared构造，记得加入,theano禁止调用
     data_gfs=np.asarray(data_gfs,dtype=theano.config.floatX)
     data_pm25in=np.asarray(data_pm25in,dtype=theano.config.floatX)
@@ -172,11 +174,11 @@ valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
 print '... building the model'
 steps=40
 RNNobj = Model(
-    input_size=9*3+1*2+steps,
-    hidden_size=100,
-    output_size=1,
-    stack_size=4, # make this bigger, but makes compilation slow
-    celltype=LSTM, # use RNN or LSTM
+    input_size=(6*width*width+3)*3+1*width*width*2+steps,
+    hidden_size=10,
+    output_size=1*width*width,
+    stack_size=2, # make this bigger, but makes compilation slow
+    celltype=RNN, # use RNN or LSTM
     steps=steps
 )
 
@@ -223,7 +225,7 @@ for k in xrange(200):#run k epochs
 ##############
 # SAVE MODEL #
 ##############
-savedir='/data/pm25data/model/DimPlusModel0929LSTMs4h80.pkl.gz'
+savedir='/data/pm25data/model/WiderModel0929LSTMs4h80.pkl.gz'
 save_file = gzip.open(savedir, 'wb')
 cPickle.dump(RNNobj.model.params, save_file, -1)
 cPickle.dump(para_min, save_file, -1)#scaling paras
