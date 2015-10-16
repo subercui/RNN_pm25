@@ -112,6 +112,7 @@ class RNNPm25Dataset(object):
         
         '''generrate input matrix'''
         inputs=np.zeros((self.n_exp, self.steps, self.n_element))
+        print inputs.shape
         '''gfs,(steps*6)dimentions for every slice''' 
         #首先从预测原点starttime开始，同时生成每个location第一个example数据
         for h in range(-21,t_predict+3,3):#t_predict+3是保证取到最后那个小时
@@ -289,7 +290,7 @@ class RNNPm25Dataset(object):
             
         
         '''amend data, enhance heavy pm25 and heavily changing days'''
-        print 'enhance heavy data'
+        '''print 'enhance heavy data'
         repeat=10
         morerows=0
         moreindexlist=[]
@@ -301,18 +302,19 @@ class RNNPm25Dataset(object):
         more=np.zeros((morerows,inputs.shape[1],inputs.shape[2]))
         for i in range(len(moreindexlist)):
             more[i*repeat:(i+1)*repeat,:,:]=inputs[moreindexlist[i],:,:]
-        inputs=np.vstack((inputs,more))
-        
+        inputs=np.vstack((more,inputs))
+        '''
         
         '''send out'''
         return inputs
 
 if __name__ == '__main__':
     #a,b=lonlat2mercator()
-    start=(today-datetime.timedelta(days=106)).strftime('%Y%m%d')+'08'
+    start=(today-datetime.timedelta(days=36)).strftime('%Y%m%d')+'08'
     stop=(today-datetime.timedelta(days=6)).strftime('%Y%m%d')+'08'
     obj=RNNPm25Dataset(start=start,stop=stop)
     #obj=Pm25Dataset(lon=np.array([116.3883,117.20,121.48,106.54,118.78,113.66]),lat=np.array([39.3289,39.13,31.22,29.59,32.04,34.76]),start=start,stop=stop)
     savefile(obj.input_data,savedir+'WiderRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz')
+    print 'save at '+savedir+'WiderRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz'
     #np.random.shuffle(obj.input_data)
     #savefile(obj.input_data,savedir+'WiderRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100shuffled.pkl.gz')

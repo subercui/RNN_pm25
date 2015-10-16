@@ -125,7 +125,7 @@ class RNNPm25Dataset(object):
                 for entry in ['tmp','rh','ugrd','vgrd','prate','tcdc']:#填1个step上6个数据
                     temp=cPickle.load(f)
                     for k in range(self.n_location):
-                        inputs[0+k*self.n_perpoint,(h+21)/3,cnt]=interp(temp.reshape((180*4+1,360*4)),self.lat_x[k],self.lon_y[k])
+                        inputs[0*self.n_location+k,(h+21)/3,cnt]=interp(temp.reshape((180*4+1,360*4)),self.lat_x[k],self.lon_y[k])
                         #cnt是用来找对应dim3 元素的格位置，（h+3)/3是对应dim2 step位置
                     cnt=cnt+1
                 f.close()
@@ -134,16 +134,16 @@ class RNNPm25Dataset(object):
                 print('no such file:'+gfsdir+filename)
                 for entry in ['tmp','rh','ugrd','vgrd','prate','tcdc']:#填6个数据
                     for k in range(self.n_location):
-                        inputs[0+k*self.n_perpoint,(h+21)/3,cnt]=inputs[0+k*self.n_perpoint,(h+21)/3-1,cnt]
+                        inputs[0*self.n_location+k,(h+21)/3,cnt]=inputs[0*self.n_location+k,(h+21)/3-1,cnt]
                         #cnt是用来找对应dim3 元素的格位置，（h+3)/3是对应dim2 step位置
                 cnt=cnt+1
                 
-        #同时生成每个location之后examples的数据
-        for i in range(1,self.n_perpoint):#填上矩阵中，剩余trainning example的数据
+        #生成每个location之后examples的数据
+        for i in range(1,self.n_perpoint):
             current=self.starttime+datetime.timedelta(hours=3*i)-datetime.timedelta(hours=8)#做时区变换，转回GMT
             #对于当前current所指的这一行，前steps-1个step上的数据可以从上个slice获得
             for k in range(self.n_location):
-                inputs[i+k*self.n_perpoint,0:self.steps-1,0:6]=inputs[i+k*self.n_perpoint-1,1:self.steps,0:6]
+                inputs[i*self.n_location+k,0:self.steps-1,0:6]=inputs[(i-1)*self.n_location+k,1:self.steps,0:6]
             #对于当前current所指的这一行，最后小时的六个数据需要以下重新读文件获得
             p_time=current+datetime.timedelta(hours=t_predict-3)
             #p_time就代表这一帧的时间，尝试打开对应文件
@@ -163,7 +163,7 @@ class RNNPm25Dataset(object):
                 for entry in ['tmp','rh','ugrd','vgrd','prate','tcdc']:#填6个数据
                     temp=cPickle.load(f)
                     for k in range(self.n_location):
-                        inputs[i+k*self.n_perpoint,self.steps-1,cnt]=interp(temp.reshape((180*4+1,360*4)),self.lat_x[k],self.lon_y[k])
+                        inputs[i*self.n_location+k,self.steps-1,cnt]=interp(temp.reshape((180*4+1,360*4)),self.lat_x[k],self.lon_y[k])
                         #cnt是用来找对应dim3 元素的格位置，self.steps-1是对应dim2 step位置
                     cnt=cnt+1
                 f.close()
@@ -172,7 +172,7 @@ class RNNPm25Dataset(object):
                 print('no such file:'+gfsdir+filename)
                 for entry in ['tmp','rh','ugrd','vgrd','prate','tcdc']:#填6个数据
                     for k in range(self.n_location):
-                        inputs[i+k*self.n_perpoint,self.steps-1,cnt]=inputs[i+k*self.n_perpoint,self.steps-2,cnt]
+                        inputs[i*self.n_location+k,self.steps-1,cnt]=inputs[i*self.n_location+k,self.steps-2,cnt]
                         #cnt是用来找对应dim3 元素的格位置，self.steps-1是对应dim2 step位置
                 cnt=cnt+1
         
@@ -186,17 +186,17 @@ class RNNPm25Dataset(object):
         for h in range(-21,t_predict+3,3):
             name=(self.starttime+datetime.timedelta(hours=h)).strftime('%Y%m%d%H')
             cnt=0
-            if int(name) > 2015061324:
+            if int(name) > 2015061324:#新文件路径
                 if os.path.exists(pm25dir+name[0:8]+'/'+name+'.pkl.gz') and os.path.getsize(pm25dir+name[0:8]+'/'+name+'.pkl.gz')>0:#判断文件是否存在
                     f = gzip.open(pm25dir+name[0:8]+'/'+name+'.pkl.gz', 'rb')
                     temp=cPickle.load(f)
                     f.close()
                     for k in range(self.n_location):
-                        inputs[0+k*self.n_perpoint,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]-pm25mean[int(name[8:10])][self.cord_x[k],self.cord_y[k]]
+                        inputs[0*self.n_location+k,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]-pm25mean[int(name[8:10])][self.cord_x[k],self.cord_y[k]]
                     #cnt是用来找对应dim3 元素的格位置，（h+3)/3是对应dim2 step位置
                 else:#用3小时之前的替换
                     for k in range(self.n_location):
-                        inputs[0+k*self.n_perpoint,(h+21)/3,self.n_element-1]=inputs[0+k*self.n_perpoint,(h+21)/3-1,self.n_element-1]                
+                        inputs[0*self.n_location+k,(h+21)/3,self.n_element-1]=inputs[0*self.n_location+k,(h+21)/3-1,self.n_element-1]                
                 cnt=cnt+1
             else:
                 if os.path.exists(pm25dir+name+'.pkl.gz') and os.path.getsize(pm25dir+name+'.pkl.gz')>0:#判断文件是否存在
@@ -204,18 +204,18 @@ class RNNPm25Dataset(object):
                     temp=cPickle.load(f)
                     f.close()
                     for k in range(self.n_location):
-                        inputs[0+k*self.n_perpoint,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]-pm25mean[int(name[8:10])][self.cord_x[k],self.cord_y[k]]
+                        inputs[0*self.n_location+k,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]-pm25mean[int(name[8:10])][self.cord_x[k],self.cord_y[k]]
                     #cnt是用来找对应dim3 元素的格位置，（h+3)/3是对应dim2 step位置
                 else:#用3小时之前的替换
                     for k in range(self.n_location):
-                        inputs[0+k*self.n_perpoint,(h+21)/3,self.n_element-1]=inputs[0+k*self.n_perpoint,(h+21)/3-1,self.n_element-1]                
+                        inputs[0*self.n_location+k,(h+21)/3,self.n_element-1]=inputs[0*self.n_location+k,(h+21)/3-1,self.n_element-1]                
                 cnt=cnt+1
         
         for i in range(1,self.n_perpoint):#同时生成每个location之后的数据
             current=self.starttime+datetime.timedelta(hours=3*i)
             #对于当前current所指的这一行，前self.steps-1维的数据可以从上一个slice获得
             for k in range(self.n_location):
-                inputs[i+k*self.n_perpoint,0:self.steps-1,self.n_element-1]=inputs[i+k*self.n_perpoint-1,1:self.steps,self.n_element-1]
+                inputs[i*self.n_location+k,0:self.steps-1,self.n_element-1]=inputs[(i-1)*self.n_location+k,1:self.steps,self.n_element-1]
             for h in [t_predict]:#最后新的1位数据要读文件
                 name=(current+datetime.timedelta(hours=h)).strftime('%Y%m%d%H')#未来t_predict小时
                 if int(name) > 2015061324:
@@ -225,10 +225,10 @@ class RNNPm25Dataset(object):
                         temp=cPickle.load(f)
                         f.close()
                         for k in range(self.n_location):
-                            inputs[i+k*self.n_perpoint,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]-pm25mean[int(name[8:10])][self.cord_x[k],self.cord_y[k]]
+                            inputs[i*self.n_location+k,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]-pm25mean[int(name[8:10])][self.cord_x[k],self.cord_y[k]]
                     else:#用3小时之前的替换
                         for k in range(self.n_location):
-                            inputs[i+k*self.n_perpoint,(h+21)/3,self.n_element-1]=inputs[i+k*self.n_perpoint,(h+21)/3-1,self.n_element-1]
+                            inputs[i*self.n_location+k,(h+21)/3,self.n_element-1]=inputs[i*self.n_location+k,(h+21)/3-1,self.n_element-1]
                 else:
                     if os.path.exists(pm25dir+name+'.pkl.gz') and os.path.getsize(pm25dir+name+'.pkl.gz')>0:#判断文件是否存在
                         f = gzip.open(pm25dir+name+'.pkl.gz', 'rb')
@@ -236,10 +236,10 @@ class RNNPm25Dataset(object):
                         temp=cPickle.load(f)
                         f.close()
                         for k in range(self.n_location):
-                            inputs[i+k*self.n_perpoint,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]-pm25mean[int(name[8:10])][self.cord_x[k],self.cord_y[k]]
+                            inputs[i*self.n_location+k,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]-pm25mean[int(name[8:10])][self.cord_x[k],self.cord_y[k]]
                     else:#用右边后一个小时的数据填充（暂定可能的补偿方法）
                         for k in range(self.n_location):
-                            inputs[i+k*self.n_perpoint,(h+21)/3,self.n_element-1]=inputs[i+k*self.n_perpoint,(h+21)/3-1,self.n_element-1]
+                            inputs[i*self.n_location+k,(h+21)/3,self.n_element-1]=inputs[i*self.n_location+k,(h+21)/3-1,self.n_element-1]
                                         
         '''time features, steps*3 dimentions for every slice'''
         for i in range(0,self.n_perpoint):
@@ -247,9 +247,9 @@ class RNNPm25Dataset(object):
             for h in range(-21,t_predict+3,3):#t_predict+3是保证取到最后那个小时
                 p_time=current+datetime.timedelta(hours=h)
                 for k in range(self.n_location):
-                    inputs[i+k*self.n_perpoint,(h+21)/3,6]=p_time.hour/24
-                    inputs[i+k*self.n_perpoint,(h+21)/3,7]=p_time.weekday()/7
-                    inputs[i+k*self.n_perpoint,(h+21)/3,8]=(p_time.month+today.day/30)/12
+                    inputs[i*self.n_location+k,(h+21)/3,6]=p_time.hour/24
+                    inputs[i*self.n_location+k,(h+21)/3,7]=p_time.weekday()/7
+                    inputs[i*self.n_location+k,(h+21)/3,8]=(p_time.month+today.day/30)/12
             
         
         '''amend data, enhance heavy pm25 and heavily changing days'''
@@ -279,5 +279,6 @@ if __name__ == '__main__':
     #obj=Pm25Dataset(lon=np.array([116.3883,117.20,121.48,106.54,118.78,113.66]),lat=np.array([39.3289,39.13,31.22,29.59,32.04,34.76]),start=start,stop=stop)
     savefile(obj.input_data,savedir+'DimPlusRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz')
     #np.savetxt(savedir+"Pm25Dataset"+today.strftime('%Y%m%d')+"_t45p100.txt", obj.input_data, fmt='%.2f')
-    np.random.shuffle(obj.input_data)
-    savefile(obj.input_data,savedir+'DimPlusRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100shuffled.pkl.gz')
+    #np.random.shuffle(obj.input_data)
+    #savefile(obj.input_data,savedir+'DimPlusRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100shuffled.pkl.gz')
+    print (savedir+'DimPlusRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz')
