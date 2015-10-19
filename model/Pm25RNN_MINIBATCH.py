@@ -187,7 +187,7 @@ valid_batches=valid_set.shape[0]/batch
 cnt=np.repeat(np.eye(steps,dtype=theano.config.floatX).reshape(1,steps,steps),batch,axis=0)
 #a=RNNobj.pred_fun(train_gfs[0:20],train_pm25in[0:20])
 
-for k in xrange(100):#run k epochs
+for k in xrange(20):#run k epochs
     error_addup=0
     for i in xrange(train_batches): #an epoch
     #for i in xrange(100): #an epoch

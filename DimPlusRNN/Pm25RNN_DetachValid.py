@@ -50,7 +50,7 @@ class Model:
         # declare model
         self.model = StackedCells(input_size, celltype=celltype, layers =[hidden_size] * stack_size)
         # add a classifier:
-        self.model.layers.append(Layer(hidden_size, output_size, activation = T.tanh))
+        self.model.layers.append(Layer(hidden_size, output_size, activation = lambda x:x))
         # inputs are matrices of indices,
         # each row is a sentence, each column a timestep
         self.steps=steps
@@ -133,6 +133,7 @@ class Model:
 #############
 # LOAD DATA #
 #############
+print 'start running '+__file__
 print '... loading data'
 today=datetime.today()
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
@@ -147,9 +148,9 @@ f.close()
 #风速绝对化，记得加入
 data[:,:,2]=np.sqrt(data[:,:,2]**2+data[:,:,3]**2)
 #data scale and split
-para_min=np.amin(data[:,:,0:6],axis=0)#沿着0 dim example方向求最值
-para_max=np.amax(data[:,:,0:6],axis=0)
-data[:,:,0:6]=(data[:,:,0:6]-para_min)/(para_max-para_min)
+para_mean=np.mean(data[:,:,0:6],axis=0)#沿着0 dim example方向求最值
+para_var=np.var(data[:,:,0:6],axis=0)
+data[:,:,0:6]=(data[:,:,0:6]-para_mean)/(para_var)
 data[:,:,-1]=data[:,:,-1]/100.
 train_set, valid_set=np.split(data,[int(0.8*len(data))],axis=0)
 np.random.shuffle(train_set)
@@ -175,7 +176,7 @@ valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
 print '... building the model'
 steps=40
 RNNobj = Model(
-    input_size=9*3+1*2+steps,
+    input_size=9*3+1*2,
     hidden_size=80,
     output_size=1,
     stack_size=4, # make this bigger, but makes compilation slow
