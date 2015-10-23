@@ -72,7 +72,7 @@ class RNNPm25Dataset(object):
     给出预测点的位置和数据集的时间范围，利用gfs和pm25原始
     数据文件，构建这一时间和地点内的pm25 dataset
     ''' 
-    def __init__(self,lon=np.hstack((np.array([116.3883,117.20,121.48,106.54,118.78,113.66]),110+10*np.random.rand(94))),lat=np.hstack((np.array([39.3289,39.13,31.22,29.59,32.04,34.76]),32+10*np.random.rand(94))),start='2015040108',stop='2015051008',steps=int(t_predict/3+2)):
+    def __init__(self,lon=np.hstack((np.array([116.3883,117.20,121.48,106.54,118.78,113.66]),110+7.5*np.random.rand(94))),lat=np.hstack((np.array([39.9289,39.13,31.22,29.59,32.04,34.76]),34+6*np.random.rand(94))),start='2015040108',stop='2015051008',steps=int(t_predict/3+2)):
         '''Initialize the parameters
         
         :lon:longitude of prediction points, scalar or vector like

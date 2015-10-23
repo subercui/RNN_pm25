@@ -130,7 +130,6 @@ class Model:
 # LOAD DATA #
 #############
 print '... loading data'
-today=datetime.today()
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
 dataset='/data/pm25data/dataset/DimPlusRNNtest'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz'
 #dataset='/Users/subercui/48stepsRNNPm25Dataset20150920_t100p100.pkl.gz'

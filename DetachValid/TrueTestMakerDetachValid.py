@@ -19,11 +19,12 @@ from pyproj import Proj
 
 p = Proj('+proj=merc')
 
-gfsdir='/ldata/pm25data/gfs/'
-pm25dir='/mnt/storm/nowcasting/pm25/'
+gfsdir='/data/pm25data/gfs/'
+pm25dir='/data/testdata/pm25/'
 today=datetime.datetime.today()
-pm25meandir='/ldata/pm25data/pm25mean/mean'+today.strftime('%Y%m%d')+'/'
-savedir='/ldata/pm25data/pm25dataset/'
+today=today.replace(2015,9,1)
+pm25meandir='/data/pm25data/pm25mean/mean'+today.strftime('%Y%m%d')+'/'
+savedir='/data/pm25data/dataset/'
 
 t_predict=120
 #n_predict=8
@@ -72,7 +73,7 @@ class RNNPm25Dataset(object):
     给出预测点的位置和数据集的时间范围，利用gfs和pm25原始
     数据文件，构建这一时间和地点内的pm25 dataset
     ''' 
-    def __init__(self,lon=np.hstack((np.array([116.3883,117.20,121.48,106.54,118.78,113.66]),110+7.5*np.random.rand(94))),lat=np.hstack((np.array([39.9289,39.13,31.22,29.59,32.04,34.76]),34+6*np.random.rand(94))),start='2015090202',stop='2015092902',steps=int(t_predict/3+2)):
+    def __init__(self,lon=np.hstack((np.array([116.3883,117.20,121.48,106.54,118.78,113.66]),110+7.5*np.random.rand(94))),lat=np.hstack((np.array([39.9289,39.13,31.22,29.59,32.04,34.76]),34+6*np.random.rand(94))),start='2015092602',stop='2015092902',steps=int(t_predict/3+2)):
         '''Initialize the parameters
         
         :lon:longitude of prediction points, scalar or vector like
@@ -260,12 +261,14 @@ class RNNPm25Dataset(object):
         return inputs
 
 if __name__ == '__main__':
+    print "__file__"
     #a,b=lonlat2mercator()
     #start=(today-datetime.timedelta(days=106)).strftime('%Y%m%d')+'08'
     #stop=(today-datetime.timedelta(days=6)).strftime('%Y%m%d')+'08'
     obj=RNNPm25Dataset()
     #obj=Pm25Dataset(lon=np.array([116.3883,117.20,121.48,106.54,118.78,113.66]),lat=np.array([39.3289,39.13,31.22,29.59,32.04,34.76]),start=start,stop=stop)
-    savefile(obj.input_data,savedir+'RNNTrueTest'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz')
+    savefile(obj.input_data,savedir+'RNNTrueTest'+today.strftime('%Y%m%d')+'0926-0929.pkl.gz')
     #np.savetxt(savedir+"Pm25Dataset"+today.strftime('%Y%m%d')+"_t45p100.txt", obj.input_data, fmt='%.2f')
     #np.random.shuffle(obj.input_data)
     #savefile(obj.input_data,savedir+'RNNTrueTest'+today.strftime('%Y%m%d')+'_t100p100shuffled.pkl.gz')
+    print "saved at "+'RNNTrueTest'+today.strftime('%Y%m%d')+'0926-0929.pkl.gz'

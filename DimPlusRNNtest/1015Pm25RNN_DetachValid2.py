@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-#这一版与Pm25RNN_DimPlus.py的差别是把真正输出之前的几个迭代都放在cost function中了
+#这一版是加入了与肖达讨论的修改
+#RNN, 46steps, cnt, lambda 输出,10epoch
+
 import theano, theano.tensor as T
 import numpy as np
 import theano_lstm
@@ -7,12 +9,17 @@ import random
 import cPickle, gzip
 from datetime import datetime
 from theano_lstm import LSTM, RNN, StackedCells, Layer, create_optimization_updates
+import sys
+sys.setrecursionlimit(2000)
 theano.config.compute_test_value = 'off'
 theano.config.floatX = 'float32'
 theano.config.mode='FAST_RUN'
 theano.config.profile='False'
 theano.config.scan.allow_gc='False'
 #theano.config.device = 'gpu'
+
+today=datetime.today()
+today=today.replace(2015,9,1)
 
 def create_shared(out_size, in_size=None, name=None):
     """
@@ -51,7 +58,7 @@ class Model:
         # declare model
         self.model = StackedCells(input_size, celltype=celltype, layers =[hidden_size] * stack_size)
         # add a classifier:
-        self.model.layers.append(Layer(hidden_size, output_size, activation = T.tanh))
+        self.model.layers.append(Layer(hidden_size, output_size, activation = lambda x:x))
         # inputs are matrices of indices,
         # each row is a sentence, each column a timestep
         self.steps=steps
@@ -87,27 +94,27 @@ class Model:
         for i in xrange(1,7):#前6次（0-5），输出之前的先做的6个frame，之后第7次是第1个输出
             gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,i+2]],axis=1)
             pm25in_x=T.concatenate([pm25in_x[:,1:],pm25in[:,i+1]],axis=1)
-            self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,0]],axis=1),self.layerstatus)
-	    self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
+            self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,i]],axis=1),self.layerstatus)
+            self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
         if self.steps > 1:
             gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,9]],axis=1)
             pm25in_x=T.concatenate([pm25in_x[:,1:],T.shape_padright(self.results[:,-1])],axis=1)
-            self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,1]],axis=1),self.layerstatus)
-            self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)      
+            self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,7]],axis=1),self.layerstatus)
+            self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
             #前传之后step-2次
             for i in xrange(2,self.steps):
                 gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,i+8]],axis=1)
                 pm25in_x=T.concatenate([pm25in_x[:,1:],T.shape_padright(self.results[:,-1])],axis=1)
-                self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,i]],axis=1),self.layerstatus)
+                self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x,self.cnt[:,:,i+6]],axis=1),self.layerstatus)
                 #need T.shape_padright???
                 self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
         return self.results
         
     def create_cost_fun (self):                                 
-        self.cost = (self.predictions - self.pm25target).norm(L=2)
+        self.cost = (self.predictions[:,6:46] - self.pm25target[:,6:46]).norm(L=2)
 
     def create_valid_error(self):
-        self.valid_error=T.mean(T.abs_(self.predictions - self.pm25target),axis=0)
+        self.valid_error=T.mean(T.abs_(self.predictions[:,6:46] - self.pm25target[:,6:46]),axis=0)
                 
     def create_predict_function(self):
         self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in,self.cnt],outputs =self.predictions,allow_input_downcast=True)
@@ -136,12 +143,13 @@ class Model:
 # LOAD DATA #
 #############
 print '... loading data'
-today=datetime.today()
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
-dataset='/data/pm25data/dataset/DimPlusRNNPm25Dataset20150929_t100p100shuffled.pkl.gz'
+dataset='/data/pm25data/dataset/DimPlusRNNtest'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz'
 #dataset='/Users/subercui/48stepsRNNPm25Dataset20150920_t100p100.pkl.gz'
 f=gzip.open(dataset,'rb')
-data=cPickle.load(f)
+data=cPickle.load(f)[:80100]
+print "Dataset Shape"
+print data.shape
 data=np.asarray(data,dtype=theano.config.floatX)
 f.close()
 #风速绝对化，记得加入
@@ -152,29 +160,49 @@ para_max=np.amax(data[:,:,0:6],axis=0)
 data[:,:,0:6]=(data[:,:,0:6]-para_min)/(para_max-para_min)
 data[:,:,-1]=data[:,:,-1]/100.
 train_set, valid_set=np.split(data,[int(0.8*len(data))],axis=0)
+np.random.shuffle(train_set)
+np.random.shuffle(valid_set)
 
 def construct(data_xy,borrow=True):
     data_gfs,data_pm25=np.split(data_xy,[data_xy.shape[2]-1],axis=2)
-    data_pm25in,_=np.split(data_pm25,[8],axis=1)
-    _,data_pm25target=np.split(data_pm25,[2],axis=1)
+    data_pm25in,data_pm25target=np.split(data_pm25,[2],axis=1)
     #这里的维度改了
     data_pm25target=data_pm25target.reshape(data_pm25target.shape[0],data_pm25target.shape[1])
     #加入shared构造，记得加入,theano禁止调用
     data_gfs=np.asarray(data_gfs,dtype=theano.config.floatX)
     data_pm25in=np.asarray(data_pm25in,dtype=theano.config.floatX)
     data_pm25target=np.asarray(data_pm25target,dtype=theano.config.floatX)
-    return data_gfs,data_pm25in,data_pm25target
+    return data_gfs,data_pm25,data_pm25target
     
 train_gfs,train_pm25in,train_pm25target=construct(train_set)
 valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
+
+################
+# LOAD TESTSET #
+################
+print '... loading testset'
+dataset='/data/pm25data/dataset/DimPlusRNNTrueTest201509010903-0929.pkl.gz'
+f=gzip.open(dataset,'rb')
+testdata=cPickle.load(f)
+#data selection
+#testdata=data[:,6:,(0,1,2,3,4,5,-1)]
+testdata=np.asarray(testdata,dtype=theano.config.floatX)
+f.close()
+#风速绝对化，记得加入
+testdata[:,:,2]=np.sqrt(testdata[:,:,2]**2+testdata[:,:,3]**2)
+#data scale and split
+testdata[:,:,0:6]=(testdata[:,:,0:6]-para_min)/(para_max-para_min)
+testdata[:,:,-1]=testdata[:,:,-1]/100.
+test_gfs,test_pm25in,test_pm25target=construct(testdata)
                 
 ######################
 # BUILD ACTUAL MODEL #
 ######################
 print '... building the model'
 steps=40
+cntshape=steps+6
 RNNobj = Model(
-    input_size=9*3+1*2+steps,
+    input_size=9*3+1*2+cntshape,
     hidden_size=40,
     output_size=1,
     stack_size=2, # make this bigger, but makes compilation slow
@@ -190,14 +218,15 @@ print '... training'
 batch=40
 train_batches=train_set.shape[0]/batch
 valid_batches=valid_set.shape[0]/batch
+test_batches=testdata.shape[0]/batch
 #cnt = np.zeros((batch,steps),dtype=theano.config.floatX)
 #用代数计数法
 #cnt=np.zeros((batch,1),dtype=theano.config.floatX)
 #用sparse计数法，要加入
-cnt=np.repeat(np.eye(steps,dtype=theano.config.floatX).reshape(1,steps,steps),batch,axis=0)
+cnt=np.repeat(np.eye(cntshape,dtype=theano.config.floatX).reshape(1,cntshape,cntshape),batch,axis=0)
 #a=RNNobj.pred_fun(train_gfs[0:20],train_pm25in[0:20])
 
-for k in xrange(100):#run k epochs
+for k in xrange(10):#run k epochs
     error_addup=0
     for i in xrange(train_batches): #an epoch
     #for i in xrange(100): #an epoch
@@ -218,14 +247,24 @@ for k in xrange(100):#run k epochs
             #print error
             #print ("batch %(batch)d, validation error=%(error)f" % ({"batch": i, "error": error}))
     error=valid_error_addup/(i+1)
-    print ("epoch %(epoch)d, validation error:"%({"epoch":k+1}))
+    print ("epoch %(epoch)d, validation error: %(error)f"%({"epoch":k+1, "error":np.mean(error)}))
     print error
     #print ("   validation epoch %(epoch)d, validation error=%(error)f" % ({"epoch": k, "error": error}))
+
+    test_error_addup=0
+    for i in xrange(test_batches): #an epoch
+    #for i in xrange(100):
+        test_error_addup=RNNobj.valid_fun(test_gfs[batch*i:batch*(i+1)],test_pm25in[batch*i:batch*(i+1)],test_pm25target[batch*i:batch*(i+1)],cnt)+test_error_addup
+        if i%(test_batches/3) == 0:
+            print ("batch %(batch)d, test error:"%({"batch":i+1}))
+    error=test_error_addup/(i+1)
+    print ("epoch %(epoch)d, test error: %(error)f"%({"epoch":k+1, "error":np.mean(error)}))
+    print error
 
 ##############
 # SAVE MODEL #
 ##############
-savedir='/data/pm25data/model/AllStepsInCostModel1010LSTMs2h40.pkl.gz'
+savedir='/data/pm25data/model/DimPlusTest2'+today.strftime('%Y%m%d')+'.pkl.gz'
 save_file = gzip.open(savedir, 'wb')
 cPickle.dump(RNNobj.model.params, save_file, -1)
 cPickle.dump(para_min, save_file, -1)#scaling paras
