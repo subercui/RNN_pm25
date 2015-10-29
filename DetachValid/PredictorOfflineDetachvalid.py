@@ -107,7 +107,7 @@ f.close()
 print '... loading data'
 today=datetime.today()
 #dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
-dataset='/data/pm25data/dataset/DimPlusRNNTrueTest201509010903-0929.pkl.gz'
+dataset='/data/pm25data/dataset/FogyRNNTrueTest201509010903-0929.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)
 #data selection
