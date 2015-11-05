@@ -8,6 +8,7 @@
 '''
 [gfs-21h, gfs-18h,..., gfs-3h, gfs0h, gfs+3h, gfs+6h, gfs+9h,..., gfs+120h]; [pm25-21h, pm25-18h,..., pm25-3h,pm250h]+[pm25+3h,pm25+6h,...,pm25+120h]
 '''
+#这个文件不用平均值了，每一帧加一个当前帧与上一帧的差
 #并注意到全球gfs数据是格林尼治时间，偏移8小时到北京时间之后之后对准
 #gfs分辨率为0.25°，经度从0开始向东经为正，维度从北纬90°开始向南为正。第一维是维度，第二维是经度（721*1440）。
 
@@ -24,7 +25,6 @@ gfsdir='/ldata/pm25data/gfs/'
 pm25dir='/mnt/storm/nowcasting/pm25/'
 today=datetime.datetime.today()
 today=today.replace(2015,9,1)
-pm25meandir='/ldata/pm25data/pm25mean/mean'+today.strftime('%Y%m%d')+'/'
 savedir='/ldata/pm25data/pm25dataset/'
 
 t_predict=120
@@ -92,7 +92,7 @@ class RNNPm25Dataset(object):
         self.lon_y=lon/0.25
         
         self.steps=steps#steps不止是预测的维度，是第二维全部跳转个数，包括预测之前的时间帧
-        self.n_element=6+1+3#6gfs+1pm25+3时间特征
+        self.n_element=6+3+1#6gfs+1pm25+3时间特征
         self.starttime=datetime.datetime(int(start[0:4]),int(start[4:6]),int(start[6:8]),int(start[8:10]))
         self.stoptime=datetime.datetime(int(stop[0:4]),int(stop[4:6]),int(stop[6:8]),int(stop[8:10]))
         self.n_location=len(lon)#从地图上取了n_location个试验点
@@ -178,11 +178,6 @@ class RNNPm25Dataset(object):
                 cnt=cnt+1
         
         '''pm25,(steps*1)dimentions for every slice'''
-        pm25mean=[None]*24
-        for h in range(24):#取出各个小时的pm25mean备用
-            f = open(pm25meandir+'meanfor'+str(h)+'.pkl', 'rb')
-            pm25mean[h]=cPickle.load(f)
-            f.close()
         #同时生成每个location第一个slice的数据
         for h in range(-21,t_predict+3,3):
             name=(self.starttime+datetime.timedelta(hours=h)).strftime('%Y%m%d%H')
@@ -193,7 +188,7 @@ class RNNPm25Dataset(object):
                     temp=cPickle.load(f)
                     f.close()
                     for k in range(self.n_location):
-                        inputs[0*self.n_location+k,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]-pm25mean[int(name[8:10])][self.cord_x[k],self.cord_y[k]]
+                        inputs[0*self.n_location+k,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]
                     #cnt是用来找对应dim3 元素的格位置，（h+3)/3是对应dim2 step位置
                 else:#用3小时之前的替换
                     for k in range(self.n_location):
@@ -205,7 +200,7 @@ class RNNPm25Dataset(object):
                     temp=cPickle.load(f)
                     f.close()
                     for k in range(self.n_location):
-                        inputs[0*self.n_location+k,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]-pm25mean[int(name[8:10])][self.cord_x[k],self.cord_y[k]]
+                        inputs[0*self.n_location+k,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]
                     #cnt是用来找对应dim3 元素的格位置，（h+3)/3是对应dim2 step位置
                 else:#用3小时之前的替换
                     for k in range(self.n_location):
@@ -226,7 +221,7 @@ class RNNPm25Dataset(object):
                         temp=cPickle.load(f)
                         f.close()
                         for k in range(self.n_location):
-                            inputs[i*self.n_location+k,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]-pm25mean[int(name[8:10])][self.cord_x[k],self.cord_y[k]]
+                            inputs[i*self.n_location+k,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]
                     else:#用3小时之前的替换
                         for k in range(self.n_location):
                             inputs[i*self.n_location+k,(h+21)/3,self.n_element-1]=inputs[i*self.n_location+k,(h+21)/3-1,self.n_element-1]
@@ -237,7 +232,7 @@ class RNNPm25Dataset(object):
                         temp=cPickle.load(f)
                         f.close()
                         for k in range(self.n_location):
-                            inputs[i*self.n_location+k,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]-pm25mean[int(name[8:10])][self.cord_x[k],self.cord_y[k]]
+                            inputs[i*self.n_location+k,(h+21)/3,self.n_element-1]=temp[self.cord_x[k],self.cord_y[k]]
                     else:#用右边后一个小时的数据填充（暂定可能的补偿方法）
                         for k in range(self.n_location):
                             inputs[i*self.n_location+k,(h+21)/3,self.n_element-1]=inputs[i*self.n_location+k,(h+21)/3-1,self.n_element-1]
@@ -278,8 +273,5 @@ if __name__ == '__main__':
     stop=(today-datetime.timedelta(days=6)).strftime('%Y%m%d')+'08'
     obj=RNNPm25Dataset(start=start,stop=stop)
     #obj=Pm25Dataset(lon=np.array([116.3883,117.20,121.48,106.54,118.78,113.66]),lat=np.array([39.3289,39.13,31.22,29.59,32.04,34.76]),start=start,stop=stop)
-    savefile(obj.input_data,savedir+'DimPlusRNNtest'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz')
-    #np.savetxt(savedir+"Pm25Dataset"+today.strftime('%Y%m%d')+"_t45p100.txt", obj.input_data, fmt='%.2f')
-    #np.random.shuffle(obj.input_data)
-    #savefile(obj.input_data,savedir+'DimPlusRNNPm25Dataset'+today.strftime('%Y%m%d')+'_t100p100shuffled.pkl.gz')
-    print (savedir+'DimPlusRNNtest'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz')
+    savefile(obj.input_data,savedir+'DiffRNNtest'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz')
+    print (savedir+'DiffRNNtest'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz')
