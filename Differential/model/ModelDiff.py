@@ -13,6 +13,9 @@ theano.config.profile='False'
 theano.config.scan.allow_gc='False'
 #theano.config.device = 'gpu'
 
+today=datetime.today()
+today=today.replace(2015,9,1)
+
 class Model:
     """
     Simple predictive model for forecasting words from
@@ -43,6 +46,57 @@ class Model:
         self.create_validate_function()
         '''上面几步的意思就是先把公式写好'''
         
+    @property
+    def params(self):
+        return self.model.params
+        
+    def create_prediction(self):#做一次predict的方法
+        gfs=self.gfs
+        pm25in=self.pm25in
+        #初始第一次前传
+        gfs_x=T.concatenate([gfs[:,0],gfs[:,1],gfs[:,2]],axis=1)
+        pm25in_x=T.concatenate([pm25in[:,0],pm25in[:,1]],axis=1)
+        self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x],axis=1))
+        self.results=self.layerstatus[-1]
+        if self.steps > 1:
+            for i in xrange(1,self.steps):
+                gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,i+2]],axis=1)
+                pm25in_x=T.concatenate([pm25in_x[:,2:],T.shape_padright(pm25in_x[:,-2]-self.results[:,i-1]),T.shape_padright(self.results[:,i-1])],axis=1)
+                self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x],axis=1),self.layerstatus)
+                self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
+                
+        return self.results
+                
+        
+    def create_cost_fun (self):                                 
+        self.cost = (self.predictions - self.pm25target).norm(L=2)
+
+    def create_valid_error(self):
+        self.valid_error=T.mean(T.abs_(self.predictions - self.pm25target),axis=0)
+                
+    def create_predict_function(self):
+        self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in],outputs =self.predictions,allow_input_downcast=True)
+                                 
+    def create_training_function(self):
+        updates, gsums, xsums, lr, max_norm = create_optimization_updates(self.cost, self.params, method="adadelta")#这一步Gradient Decent!!!!
+        self.update_fun = theano.function(
+            inputs=[self.gfs,self.pm25in, self.pm25target],
+            outputs=self.cost,
+            updates=updates,
+            name='update_fun',
+            profile=False,
+            allow_input_downcast=True)
+            
+    def create_validate_function(self):
+        self.valid_fun = theano.function(
+            inputs=[self.gfs,self.pm25in, self.pm25target],
+            outputs=self.valid_error,
+            allow_input_downcast=True
+        )
+        
+    def __call__(self, gfs,pm25in):
+        return self.pred_fun(gfs,pm25in)
+        
         
         
 #############
@@ -53,7 +107,7 @@ print '... loading data'
 dataset='/data/pm25data/dataset/DiffRNNtest'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz'
 #dataset='/Users/subercui/48stepsRNNPm25Dataset20150920_t100p100.pkl.gz'
 f=gzip.open(dataset,'rb')
-data=cPickle.load(f)[:80100]
+data=cPickle.load(f)
 print "Dataset Shape"
 print data.shape
 data=np.asarray(data,dtype=theano.config.floatX)
@@ -64,6 +118,8 @@ data2=data[:,:,-1]#data2 之后就可以不要了
 data3=data2-np.roll(data2,1,axis=1)
 data3[:,0]=0
 data=np.concatenate((data,data3),axis=1)#最后一维就变成差了
+#截取
+data=data[:80100,-42:]
 
 
 #风速绝对化，记得加入
@@ -72,21 +128,21 @@ data[:,:,2]=np.sqrt(data[:,:,2]**2+data[:,:,3]**2)
 para_min=np.amin(data[:,:,0:6],axis=0)#沿着0 dim example方向求最值
 para_max=np.amax(data[:,:,0:6],axis=0)
 data[:,:,0:6]=(data[:,:,0:6]-para_min)/(para_max-para_min)
-data[:,:,-1]=data[:,:,-1]/100.
+data[:,:,-1,-2]=data[:,:,-1,-2]/100.
 train_set, valid_set=np.split(data,[int(0.8*len(data))],axis=0)
 np.random.shuffle(train_set)
 np.random.shuffle(valid_set)
 
-def construct(data_xy,borrow=True):
-    data_gfs,data_pm25=np.split(data_xy,[data_xy.shape[2]-1],axis=2)
+def construct(data_xy,borrow=True):#把后两维都作为pm25in
+    data_gfs,data_pm25=np.split(data_xy,[data_xy.shape[2]-2],axis=2)
     data_pm25in,data_pm25target=np.split(data_pm25,[2],axis=1)
     #这里的维度改了
-    data_pm25target=data_pm25target.reshape(data_pm25target.shape[0],data_pm25target.shape[1])
+    data_pm25target=data_pm25target[:,:,-1].reshape(data_pm25target.shape[0],data_pm25target.shape[1])
     #加入shared构造，记得加入,theano禁止调用
     data_gfs=np.asarray(data_gfs,dtype=theano.config.floatX)
     data_pm25in=np.asarray(data_pm25in,dtype=theano.config.floatX)
     data_pm25target=np.asarray(data_pm25target,dtype=theano.config.floatX)
-    return data_gfs,data_pm25,data_pm25target
+    return data_gfs,data_pm25in,data_pm25target
     
 train_gfs,train_pm25in,train_pm25target=construct(train_set)
 valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
@@ -96,9 +152,8 @@ valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
 ######################
 print '... building the model'
 steps=40
-cntshape=steps+6
 RNNobj = Model(
-    input_size=9*3+1*2+cntshape,
+    input_size=9*3+2*2,
     hidden_size=40,
     output_size=1,
     stack_size=2, # make this bigger, but makes compilation slow

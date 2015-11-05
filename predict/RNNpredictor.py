@@ -172,4 +172,4 @@ print 100*valid_error
 
 batch=600
 cnt=np.repeat(np.eye(steps,dtype=theano.config.floatX).reshape(1,steps,steps),batch,axis=0)
-a=RNNobj.pred_fun(train_gfs[0:batch],train_pm25in[0:batch],cnt)
+a=RNNobj.pred_fun(train_gfs[batch*2:batch*3],train_pm25in[batch*2:batch*3],cnt)
