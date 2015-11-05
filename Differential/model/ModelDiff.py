@@ -50,7 +50,7 @@ class Model:
 #############
 print '... loading data'
 #dataset='/ldata/pm25data/pm25dataset/RNNPm25Dataset'+today.strftime('%Y%m%d')+'_t10p100shuffled.pkl.gz'
-dataset='/data/pm25data/dataset/DimPlusRNNtest'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz'
+dataset='/data/pm25data/dataset/DiffRNNtest'+today.strftime('%Y%m%d')+'_t100p100.pkl.gz'
 #dataset='/Users/subercui/48stepsRNNPm25Dataset20150920_t100p100.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)[:80100]
@@ -60,9 +60,10 @@ data=np.asarray(data,dtype=theano.config.floatX)
 f.close()
 #加入差分数据
 data1=data[:,:,:-2]
-data2=data[:,:,-1]
+data2=data[:,:,-1]#data2 之后就可以不要了
 data3=data2-np.roll(data2,1,axis=1)
-data=np.concatenate((data,data3),axis=1)
+data3[:,0]=0
+data=np.concatenate((data,data3),axis=1)#最后一维就变成差了
 
 
 #风速绝对化，记得加入
