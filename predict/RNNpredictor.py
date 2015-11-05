@@ -93,6 +93,7 @@ RNNobj = Model(
 
 #load model
 f=gzip.open('/Users/subercui/RNNModel20150917.pkl.gz', 'rb')
+#f=gzip.open('DetachValidModel20150901.pkl.gz', 'rb')
 #for i in range(len(RNNobj.model.layers)):
 #    RNNobj.model.layers[i].params=cPickle.load(f)
 RNNobj.model.params=cPickle.load(f)
@@ -108,6 +109,7 @@ print '... loading data'
 today=datetime.today()
 #dataset='/Users/subercui/RNNPm25Dataset20150813_t100p100shuffled.pkl.gz'
 dataset='/Users/subercui/Git/RNN_pm25/test/RNNTrueTest20150918_t100p100.pkl.gz'
+#dataset='RNNTrueTest201509010903-0929.pkl.gz'
 f=gzip.open(dataset,'rb')
 data=cPickle.load(f)
 data=np.asarray(data,dtype=theano.config.floatX)
@@ -160,9 +162,14 @@ output=func(xnew)'''
 # Validate #
 ############
 print '... predicting'
+print train_gfs.shape,train_pm25in.shape,train_pm25target.shape
 
-batch=4800
+batch=2000
 cnt=np.repeat(np.eye(steps,dtype=theano.config.floatX).reshape(1,steps,steps),batch,axis=0)
 valid_error=RNNobj.valid_fun(train_gfs[0:batch],train_pm25in[0:batch],train_pm25target[0:batch],cnt)
 #valid_error=RNNobj.valid_fun(train_gfs,train_pm25in,train_pm25target,cnt)
 print 100*valid_error
+
+batch=600
+cnt=np.repeat(np.eye(steps,dtype=theano.config.floatX).reshape(1,steps,steps),batch,axis=0)
+a=RNNobj.pred_fun(train_gfs[0:batch],train_pm25in[0:batch],cnt)
