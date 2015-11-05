@@ -103,7 +103,7 @@ RNNobj = Model(
 )
 
 #load model
-modeldir='/data/pm25data/model/DimPlusTest20150901.pkl.gz '
+modeldir='/data/pm25data/model/DimPlusTest20150901.pkl.gz'
 f=gzip.open(modeldir, 'rb')
 #for i in range(len(RNNobj.model.layers)):
 #    RNNobj.model.layers[i].params=cPickle.load(f)
