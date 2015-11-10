@@ -24,14 +24,14 @@ class Model:
     what size their memory should be, and how many
     words can be predicted.
     """
-    def __init__(self, hidden_size, input_size, output_size, celltype=RNN):
+    def __init__(self, hidden_size, input_size, output_size, stack_size, celltype=RNN,steps=40):
         # declare model
-        self.model = StackedCells(input_size, celltype=celltype, layers =hidden_size)
+        self.model = StackedCells(input_size, celltype=celltype, layers =[hidden_size]*stack_size)
         # add a classifier:
         self.model.layers.append(Layer(hidden_size, output_size, activation = lambda x:x))
         # inputs are matrices of indices,
         # each row is a sentence, each column a timestep
-        self.steps=T.iscalar('steps')
+        self.steps=40
         self.gfs=T.tensor3('gfs')#输入gfs数据
         self.pm25in=T.tensor3('pm25in')#pm25初始数据部分
         self.pm25target=T.matrix('pm25target')#输出的目标target，这一版把target维度改了
@@ -59,21 +59,23 @@ class Model:
         pm25in_x=T.concatenate([pm25in[:,0],pm25in[:,1]],axis=1)
         self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x],axis=1))
         self.results=self.layerstatus[-1]
+        pm25next=pm25in[:,1]-self.results
         if self.steps > 1:
             for i in xrange(1,self.steps):
                 gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,i+2]],axis=1)
-                pm25in_x=T.concatenate([pm25in_x[:,2:],T.shape_padright(pm25in_x[:,-2]-self.results[:,i-1]),T.shape_padright(self.results[:,i-1])],axis=1)
+                pm25in_x=T.concatenate([pm25in_x[:,1:],pm25next],axis=1)
                 self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x],axis=1),self.layerstatus)
                 self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
+                pm25next=pm25next-self.results[-1]
                 
         return self.results
                 
         
     def create_cost_fun (self):                                 
-        self.cost = (self.predictions - self.pm25target).norm(L=2)
+        self.cost = (self.predictions - self.pm25target[:,-40:]).norm(L=2)
 
     def create_valid_error(self):
-        self.valid_error=T.mean(T.abs_(self.predictions - self.pm25target),axis=0)
+        self.valid_error=T.mean(T.abs_(self.predictions - self.pm25target[:,-40:]),axis=0)
                 
     def create_predict_function(self):
         self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in],outputs =self.predictions,allow_input_downcast=True)
@@ -98,7 +100,16 @@ class Model:
     def __call__(self, gfs,pm25in):
         return self.pred_fun(gfs,pm25in)
         
-        
+print '... building the model'
+steps=1
+RNNobj = Model(
+    input_size=9*3+2*2,
+    hidden_size=40,
+    output_size=1,
+    stack_size=2, # make this bigger, but makes compilation slow
+    celltype=LSTM, # use RNN or LSTM
+    steps=steps
+)         
         
 #############
 # LOAD DATA #
@@ -115,10 +126,10 @@ data=np.asarray(data,dtype=theano.config.floatX)
 f.close()
 #加入差分数据
 data1=data[:,:,:-2]
-data2=data[:,:,-1]#data2 之后就可以不要了
+data2=data[:,:,-1:]#data2 之后就可以不要了
 data3=data2-np.roll(data2,1,axis=1)
 data3[:,0]=0
-data=np.concatenate((data,data3),axis=1)#最后一维就变成差了
+data=np.concatenate((data,data3),axis=2)#最后一维就变成差了
 #截取
 data=data[:80100,-42:]
 
@@ -129,16 +140,17 @@ data[:,:,2]=np.sqrt(data[:,:,2]**2+data[:,:,3]**2)
 para_min=np.amin(data[:,:,0:6],axis=0)#沿着0 dim example方向求最值
 para_max=np.amax(data[:,:,0:6],axis=0)
 data[:,:,0:6]=(data[:,:,0:6]-para_min)/(para_max-para_min)
-data[:,:,-1,-2]=data[:,:,-1,-2]/100.
+data[:,:,-2]=data[:,:,-2]-80
+data[:,:,(-1,-2)]=data[:,:,(-1,-2)]/100.
 train_set, valid_set=np.split(data,[int(0.8*len(data))],axis=0)
 np.random.shuffle(train_set)
 np.random.shuffle(valid_set)
 
 def construct(data_xy,borrow=True):#把后两维都作为pm25in
-    data_gfs,data_pm25=np.split(data_xy,[data_xy.shape[2]-2],axis=2)
-    data_pm25in,data_pm25target=np.split(data_pm25,[2],axis=1)
+    data_gfs,data_pm25in,data_pm25target=np.split(data_xy,[-2,-1],axis=2)
+    #data_pm25in,data_pm25target=np.split(data_pm25,[2],axis=1)
     #这里的维度改了
-    data_pm25target=data_pm25target[:,:,-1].reshape(data_pm25target.shape[0],data_pm25target.shape[1])
+    data_pm25target=data_pm25target.reshape(data_pm25target.shape[0],data_pm25target.shape[1])
     #加入shared构造，记得加入,theano禁止调用
     data_gfs=np.asarray(data_gfs,dtype=theano.config.floatX)
     data_pm25in=np.asarray(data_pm25in,dtype=theano.config.floatX)
@@ -155,7 +167,58 @@ print '... building the model'
 steps=40
 RNNobj = Model(
     input_size=9*3+2*2,
-    hidden_size=[40],
+    hidden_size=40,
     output_size=1,
+    stack_size=2, # make this bigger, but makes compilation slow
     celltype=LSTM, # use RNN or LSTM
+    steps=steps
 ) 
+
+###############
+# TRAIN MODEL #
+###############
+print '... training'
+
+batch=40
+train_batches=train_set.shape[0]/batch
+valid_batches=valid_set.shape[0]/batch
+
+#cnt=np.repeat(np.eye(cntshape,dtype=theano.config.floatX).reshape(1,cntshape,cntshape),batch,axis=0)
+#a=RNNobj.pred_fun(train_gfs[0:20],train_pm25in[0:20])
+
+for k in xrange(10):#run k epochs
+    error_addup=0
+    for i in xrange(train_batches): #an epoch
+    #for i in xrange(100): #an epoch
+        error_addup=RNNobj.update_fun(train_gfs[batch*i:batch*(i+1)],train_pm25in[batch*i:batch*(i+1)],train_pm25target[batch*i:batch*(i+1)])+error_addup
+        if i%(train_batches/3) == 0:
+	    error=error_addup/(i+1)
+            print ("batch %(batch)d, error=%(error)f" % ({"batch": i+1, "error": error}))
+    error=error_addup/(i+1)
+    print ("   epoch %(epoch)d, error=%(error)f" % ({"epoch": k+1, "error": error}))
+    
+    valid_error_addup=0
+    for i in xrange(valid_batches): #an epoch
+    #for i in xrange(100):
+        valid_error_addup=RNNobj.valid_fun(valid_gfs[batch*i:batch*(i+1)],valid_pm25in[batch*i:batch*(i+1)],valid_pm25target[batch*i:batch*(i+1)])+valid_error_addup
+        if i%(valid_batches/3) == 0:
+            #error=valid_error_addup/(i+1)
+	    print ("batch %(batch)d, validation error:"%({"batch":i+1}))
+            #print error
+            #print ("batch %(batch)d, validation error=%(error)f" % ({"batch": i, "error": error}))
+    error=valid_error_addup/(i+1)
+    print ("epoch %(epoch)d, validation error:"%({"epoch":k+1}))
+    print error
+    #print ("   validation epoch %(epoch)d, validation error=%(error)f" % ({"epoch": k, "error": error}))
+
+##############
+# SAVE MODEL #
+##############
+savedir='/data/pm25data/model/DiffRNN'+today.strftime('%Y%m%d')+'.pkl.gz'
+save_file = gzip.open(savedir, 'wb')
+cPickle.dump(RNNobj.model.params, save_file, -1)
+cPickle.dump(para_min, save_file, -1)#scaling paras
+cPickle.dump(para_max, save_file, -1)
+save_file.close()
+
+print ('model saved at '+savedir)
