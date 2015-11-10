@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-#每一次的输入是2*10维，前9维是gfs+时间，第10维是当前pm25,输出未来一小时的差
 import theano, theano.tensor as T
 import numpy as np
 import theano_lstm
@@ -24,14 +23,14 @@ class Model:
     what size their memory should be, and how many
     words can be predicted.
     """
-    def __init__(self, hidden_size, input_size, output_size, celltype=RNN):
+    def __init__(self, hidden_size, input_size, output_size, stack_size=1, celltype=RNN,steps=40):
         # declare model
-        self.model = StackedCells(input_size, celltype=celltype, layers =hidden_size)
+        self.model = StackedCells(input_size, celltype=celltype, layers =[hidden_size] * stack_size)
         # add a classifier:
         self.model.layers.append(Layer(hidden_size, output_size, activation = lambda x:x))
         # inputs are matrices of indices,
         # each row is a sentence, each column a timestep
-        self.steps=T.iscalar('steps')
+        self.steps=steps
         self.gfs=T.tensor3('gfs')#输入gfs数据
         self.pm25in=T.tensor3('pm25in')#pm25初始数据部分
         self.pm25target=T.matrix('pm25target')#输出的目标target，这一版把target维度改了
@@ -155,7 +154,9 @@ print '... building the model'
 steps=40
 RNNobj = Model(
     input_size=9*3+2*2,
-    hidden_size=[40],
+    hidden_size=40,
     output_size=1,
+    stack_size=2, # make this bigger, but makes compilation slow
     celltype=LSTM, # use RNN or LSTM
+    steps=steps
 ) 
