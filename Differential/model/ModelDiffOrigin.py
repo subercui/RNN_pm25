@@ -114,10 +114,10 @@ data=np.asarray(data,dtype=theano.config.floatX)
 f.close()
 #加入差分数据
 data1=data[:,:,:-2]
-data2=data[:,:,-1]#data2 之后就可以不要了
+data2=data[:,:,-1:]#data2 之后就可以不要了
 data3=data2-np.roll(data2,1,axis=1)
 data3[:,0]=0
-data=np.concatenate((data,data3),axis=1)#最后一维就变成差了
+data=np.concatenate((data,data3),axis=2)#最后一维就变成差了
 #截取
 data=data[:80100,-42:]
 
@@ -128,7 +128,7 @@ data[:,:,2]=np.sqrt(data[:,:,2]**2+data[:,:,3]**2)
 para_min=np.amin(data[:,:,0:6],axis=0)#沿着0 dim example方向求最值
 para_max=np.amax(data[:,:,0:6],axis=0)
 data[:,:,0:6]=(data[:,:,0:6]-para_min)/(para_max-para_min)
-data[:,:,-1,-2]=data[:,:,-1,-2]/100.
+data[:,:,(-1,-2)]=data[:,:,(-1,-2)]/100.
 train_set, valid_set=np.split(data,[int(0.8*len(data))],axis=0)
 np.random.shuffle(train_set)
 np.random.shuffle(valid_set)
