@@ -150,6 +150,31 @@ def construct(data_xy,borrow=True):#把后两维都作为pm25in
 train_gfs,train_pm25in,train_pm25target=construct(train_set)
 valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
 
+################
+# LOAD TESTSET #
+################
+print '... loading testset'
+dataset='/data/pm25data/dataset/DiffRNNTrueTest201509010903-0929.pkl.gz'
+f=gzip.open(dataset,'rb')
+testdata=cPickle.load(f)
+#data selection
+#testdata=data[:,6:,(0,1,2,3,4,5,-1)]
+testdata=np.asarray(testdata,dtype=theano.config.floatX)
+f.close()
+#加入差分数据
+data1=testdata[:,:,:-2]
+data2=testdata[:,:,-1:]#data2 之后就可以不要了
+data3=data2-np.roll(data2,1,axis=1)
+data3[:,0]=0
+testdata=np.concatenate((testdata,data3),axis=2)#最后一维就变成差了
+#风速绝对化，记得加入
+testdata[:,:,2]=np.sqrt(testdata[:,:,2]**2+testdata[:,:,3]**2)
+#data scale and split
+testdata[:,:,0:6]=(testdata[:,:,0:6]-para_min)/(para_max-para_min)
+testdata[:,:,-2]=testdata[:,:,-2]-80
+testdata[:,:,(-1,-2)]=testdata[:,:,(-1,-2)]/100.
+test_gfs,test_pm25in,test_pm25target=construct(testdata)
+
 ######################
 # BUILD ACTUAL MODEL #
 ######################
@@ -172,6 +197,7 @@ print '... training'
 batch=40
 train_batches=train_set.shape[0]/batch
 valid_batches=valid_set.shape[0]/batch
+test_batches=testdata.shape[0]/batch
 
 #cnt=np.repeat(np.eye(cntshape,dtype=theano.config.floatX).reshape(1,cntshape,cntshape),batch,axis=0)
 #a=RNNobj.pred_fun(train_gfs[0:20],train_pm25in[0:20])
@@ -197,9 +223,19 @@ for k in xrange(10):#run k epochs
             #print error
             #print ("batch %(batch)d, validation error=%(error)f" % ({"batch": i, "error": error}))
     error=valid_error_addup/(i+1)
-    print ("epoch %(epoch)d, validation error:"%({"epoch":k+1}))
+    print ("epoch %(epoch)d, validation error: %(error)f"%({"epoch":k+1, "error":np.mean(error)}))
     print error
     #print ("   validation epoch %(epoch)d, validation error=%(error)f" % ({"epoch": k, "error": error}))
+
+    test_error_addup=0
+    for i in xrange(test_batches): #an epoch
+    #for i in xrange(100):
+        test_error_addup=RNNobj.valid_fun(test_gfs[batch*i:batch*(i+1)],test_pm25in[batch*i:batch*(i+1)],test_pm25target[batch*i:batch*(i+1)])+test_error_addup
+        if i%(test_batches/3) == 0:
+            print ("batch %(batch)d, test error:"%({"batch":i+1}))
+    error=test_error_addup/(i+1)
+    print ("epoch %(epoch)d, test error: %(error)f"%({"epoch":k+1, "error":np.mean(error)}))
+    print error
 
 ##############
 # SAVE MODEL #
