@@ -31,7 +31,7 @@ class Model:
         self.model.layers.append(Layer(hidden_size, output_size, activation = lambda x:x))
         # inputs are matrices of indices,
         # each row is a sentence, each column a timestep
-        self.steps=40
+        self.steps=steps
         self.gfs=T.tensor3('gfs')#输入gfs数据
         self.pm25in=T.tensor3('pm25in')#pm25初始数据部分
         self.pm25target=T.matrix('pm25target')#输出的目标target，这一版把target维度改了
@@ -66,16 +66,16 @@ class Model:
                 pm25in_x=T.concatenate([pm25in_x[:,1:],pm25next],axis=1)
                 self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x],axis=1),self.layerstatus)
                 self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
-                pm25next=pm25next-self.results[-1]
+                pm25next=pm25next-self.layerstatus[-1]
                 
         return self.results
                 
         
     def create_cost_fun (self):                                 
-        self.cost = (self.predictions - self.pm25target[:,-40:]).norm(L=2)
+        self.cost = (self.predictions - self.pm25target[:,-self.steps:]).norm(L=2)
 
     def create_valid_error(self):
-        self.valid_error=T.mean(T.abs_(self.predictions - self.pm25target[:,-40:]),axis=0)
+        self.valid_error=T.mean(T.abs_(self.predictions - self.pm25target[:,-self.steps:]),axis=0)
                 
     def create_predict_function(self):
         self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in],outputs =self.predictions,allow_input_downcast=True)
@@ -100,16 +100,6 @@ class Model:
     def __call__(self, gfs,pm25in):
         return self.pred_fun(gfs,pm25in)
         
-print '... building the model'
-steps=1
-RNNobj = Model(
-    input_size=9*3+2*2,
-    hidden_size=40,
-    output_size=1,
-    stack_size=2, # make this bigger, but makes compilation slow
-    celltype=LSTM, # use RNN or LSTM
-    steps=steps
-)         
         
 #############
 # LOAD DATA #
@@ -164,9 +154,9 @@ valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
 # BUILD ACTUAL MODEL #
 ######################
 print '... building the model'
-steps=40
+steps=10
 RNNobj = Model(
-    input_size=9*3+2*2,
+    input_size=9*3+1*2,
     hidden_size=40,
     output_size=1,
     stack_size=2, # make this bigger, but makes compilation slow
