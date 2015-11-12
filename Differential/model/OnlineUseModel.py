@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+#这一个版本是为线上提供模型的，需要提供并保存当天的模型
 #每一次的输入是2*10维，前9维是gfs+时间，第10维是当前pm25,输出未来一小时的差
 import theano, theano.tensor as T
 import numpy as np
@@ -15,7 +16,6 @@ theano.config.scan.allow_gc='False'
 #theano.config.device = 'gpu'
 
 today=datetime.today()
-today=today.replace(2015,9,1)
 
 class Model:
     """
@@ -121,7 +121,7 @@ data3=data2-np.roll(data2,1,axis=1)
 data3[:,0]=0
 data=np.concatenate((data,data3),axis=2)#最后一维就变成差了
 #截取
-data=data[:80100,-42:]
+data=data[:,-42:]
 
 
 #风速绝对化，记得加入
@@ -132,9 +132,8 @@ para_max=np.amax(data[:,:,0:6],axis=0)
 data[:,:,0:6]=(data[:,:,0:6]-para_min)/(para_max-para_min)
 data[:,:,-2]=data[:,:,-2]-80
 data[:,:,(-1,-2)]=data[:,:,(-1,-2)]/100.
-train_set, valid_set=np.split(data,[int(0.8*len(data))],axis=0)
-np.random.shuffle(train_set)
-np.random.shuffle(valid_set)
+np.random.shuffle(data)
+train_set, valid_set=np.split(data,[int(0.9*len(data))],axis=0)
 
 def construct(data_xy,borrow=True):#把后两维都作为pm25in
     data_gfs,data_pm25in,data_pm25target=np.split(data_xy,[-2,-1],axis=2)
@@ -153,7 +152,7 @@ valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
 ################
 # LOAD TESTSET #
 ################
-print '... loading testset'
+'''print '... loading testset'
 dataset='/data/pm25data/dataset/DimPlusRNNTrueTest201509010903-0929.pkl.gz'
 f=gzip.open(dataset,'rb')
 testdata=cPickle.load(f)
@@ -176,7 +175,7 @@ testdata[:,:,0:6]=(testdata[:,:,0:6]-para_min)/(para_max-para_min)
 testdata[:,:,-2]=testdata[:,:,-2]-80
 testdata[:,:,(-1,-2)]=testdata[:,:,(-1,-2)]/100.
 test_gfs,test_pm25in,test_pm25target=construct(testdata)
-
+'''
 ######################
 # BUILD ACTUAL MODEL #
 ######################
@@ -228,7 +227,7 @@ for k in xrange(5):#run k epochs
     print ("epoch %(epoch)d, validation error: %(error)f"%({"epoch":k+1, "error":np.mean(error)}))
     print error
     #print ("   validation epoch %(epoch)d, validation error=%(error)f" % ({"epoch": k, "error": error}))
-
+    '''
     test_error_addup=0
     for i in xrange(test_batches): #an epoch
     #for i in xrange(100):
@@ -238,11 +237,11 @@ for k in xrange(5):#run k epochs
     error=test_error_addup/(i+1)
     print ("epoch %(epoch)d, test error: %(error)f"%({"epoch":k+1, "error":np.mean(error)}))
     print error
-
+    '''
 ##############
 # SAVE MODEL #
 ##############
-savedir='/data/pm25data/model/DiffRNN'+today.strftime('%Y%m%d')+'.pkl.gz'
+savedir='/data/pm25data/model/OnlineDiff'+today.strftime('%Y%m%d')+'.pkl.gz'
 save_file = gzip.open(savedir, 'wb')
 cPickle.dump(RNNobj.model.params, save_file, -1)
 cPickle.dump(para_min, save_file, -1)#scaling paras
