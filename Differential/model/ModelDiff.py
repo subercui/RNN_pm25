@@ -167,6 +167,8 @@ data2=testdata[:,:,-1:]#data2 之后就可以不要了
 data3=data2-np.roll(data2,1,axis=1)
 data3[:,0]=0
 testdata=np.concatenate((testdata,data3),axis=2)#最后一维就变成差了
+#截取
+data=data[:,-42:]
 #风速绝对化，记得加入
 testdata[:,:,2]=np.sqrt(testdata[:,:,2]**2+testdata[:,:,3]**2)
 #data scale and split
