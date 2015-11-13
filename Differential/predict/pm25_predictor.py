@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 #预测模型，presict模式
+#这一版本应用了差分输出的模型
 '''
 [gfs-3h， gfs0h, gfs+3h, gfs+6h, gfs+9h,..., gfs+120h]; [pm25-3h,pm250h]+[pm25+3h,pm25+6h,...,pm25+120h]
 '''
@@ -33,11 +34,11 @@ class Model(object):
     what size their memory should be, and how many
     words can be predicted.
     """
-    def __init__(self, hidden_size, input_size, output_size, stack_size=1, celltype=RNN,steps=40):
+    def __init__(self, hidden_size, input_size, output_size, stack_size, celltype=RNN,steps=40):
         # declare model
-        self.model = StackedCells(input_size, celltype=celltype, layers =[hidden_size] * stack_size)
+        self.model = StackedCells(input_size, celltype=celltype, layers =[hidden_size]*stack_size)
         # add a classifier:
-        self.model.layers.append(Layer(hidden_size, output_size, activation = T.tanh))
+        self.model.layers.append(Layer(hidden_size, output_size, activation = lambda x:x))
         # inputs are matrices of indices,
         # each row is a sentence, each column a timestep
         self.steps=steps
@@ -45,12 +46,9 @@ class Model(object):
         self.pm25in=T.tensor3('pm25in')#pm25初始数据部分
         self.layerstatus=None
         self.results=None
-        self.cnt = T.tensor3('cnt')
         # create symbolic variables for prediction:(就是做一次整个序列完整的进行预测，得到结果是prediction)
         self.predictions = self.create_prediction()
-        self.create_predict_function()
-        '''上面几步的意思就是先把公式写好'''
-        
+        self.create_predict_function()        
         
     @property
     def params(self):
@@ -60,28 +58,29 @@ class Model(object):
         gfs=self.gfs
         pm25in=self.pm25in
         #初始第一次前传
-        self.layerstatus=self.model.forward(T.concatenate([gfs[:,0],gfs[:,1],gfs[:,2],pm25in[:,0],pm25in[:,1],self.cnt[:,:,0]],axis=1))
-        #results.shape?40*1
+        gfs_x=T.concatenate([gfs[:,0],gfs[:,1],gfs[:,2]],axis=1)
+        pm25in_x=T.concatenate([pm25in[:,0],pm25in[:,1]],axis=1)
+        self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x],axis=1))
         self.results=self.layerstatus[-1]
+        pm25next=pm25in[:,1]-self.results
         if self.steps > 1:
-            self.layerstatus=self.model.forward(T.concatenate([gfs[:,1],gfs[:,2],gfs[:,3],pm25in[:,1],self.results,self.cnt[:,:,1]],axis=1),self.layerstatus)
-            self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)      
-            #前传之后step-2次
-            for i in xrange(2,self.steps):
-                self.layerstatus=self.model.forward(T.concatenate([gfs[:,i],gfs[:,i+1],gfs[:,i+2],T.shape_padright(self.results[:,i-2]),T.shape_padright(self.results[:,i-1]),self.cnt[:,:,i]],axis=1),self.layerstatus)
-                #need T.shape_padright???
+            for i in xrange(1,self.steps):
+                gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,i+2]],axis=1)
+                pm25in_x=T.concatenate([pm25in_x[:,1:],pm25next],axis=1)
+                self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x],axis=1),self.layerstatus)
                 self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
+                pm25next=pm25next-self.layerstatus[-1]                
         return self.results
-                      
+
     def create_predict_function(self):
-        self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in,self.cnt],outputs =self.predictions,allow_input_downcast=True)
-                                        
+        self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in],outputs =self.predictions,allow_input_downcast=True)
+                                                              
     def __call__(self, gfs,pm25in):
         return self.pred_fun(gfs,pm25in)
         
 steps=40
 RNNobj = Model(
-    input_size=18+2+steps,
+    input_size=9*3+1*2,
     hidden_size=40,
     output_size=1,
     stack_size=2, # make this bigger, but makes compilation slow
@@ -96,21 +95,20 @@ para_min=cPickle.load(f)
 para_max=cPickle.load(f)
 f.close()
         
-def RNNpredict(gfs,pm25in):
+def RNNpredict(gfs,pm25in,steps):
     #风速绝对化，记得加入
     gfs[:,2]=np.sqrt(gfs[:,2]**2+gfs[:,3]**2)
     #data scale and split
-    gfs=(gfs-para_min)/(para_max-para_min)
+    gfs[:,6]=(gfs[:,6]-para_min)/(para_max[:,6]-para_min)
     pm25in=pm25in/100.
     #predict
-    batch=1
-    cnt=np.repeat(np.eye(steps,dtype=theano.config.floatX).reshape(1,steps,steps),batch,axis=0)
-    a=RNNobj.pred_fun(gfs[None,:],pm25in[None,:],cnt)
+    a=RNNobj.pred_fun(gfs[None,:],pm25in[None,:])
     #interp
     x = np.arange(0,123,3)
     y = np.zeros(41)
     y[0]=pm25in[-1,:]
-    y[1:]=a[0,:]
+    for i in range(1,y.shape[0]):
+        y[i]=y[i-1]+a[i-1]
     func = interp1d(x, y,'cubic')
     xnew=np.arange(1,121)
     output=func(xnew)
@@ -141,7 +139,7 @@ def predict_onlineRNN(provider,t_predict=120):
 
         #generate inputs
         steps=t_predict/3
-        gfs = np.zeros((steps+2,6))
+        gfs = np.zeros((steps+2,6+3))#(42,6)
         pm25in=np.zeros((2,1))
         #把gfs到底是哪个时间弄清楚,应该要取145个数了
 	gfs[:-1,0]=np.array(provider.tmp[21:24+t_predict:3]) + 273.0 #绝对温度
@@ -150,20 +148,26 @@ def predict_onlineRNN(provider,t_predict=120):
         gfs[:-1,3]=np.array(provider.vgrd[21:24+t_predict:3])
         gfs[:-1,4]=np.array(provider.prate[21:24+t_predict:3])
         gfs[:-1,5]=np.array(provider.tcdc[21:24+t_predict:3])
-	gfs[-1,0]=provider.tmp[24+t_predict-1]
+	gfs[-1,0]=provider.tmp[24+t_predict-1] + 273.0 #绝对温度
 	gfs[-1,1]=provider.rh[24+t_predict-1]
 	gfs[-1,2]=provider.ugrd[24+t_predict-1]
 	gfs[-1,3]=provider.vgrd[24+t_predict-1]
 	gfs[-1,4]=provider.prate[24+t_predict-1]
 	gfs[-1,5]=provider.tcdc[24+t_predict-1]
+	
+	#第7，8，9维三个时间维度
+	timesteps=np.arange(-3,t_predict+3,3)
+	now=datetime.datetime.today()
+	for i in xrange(0,steps+2):
+	    point=now+datetime.timedelta(hours=timesteps[i])
+	    gfs[i,6]=point.hour/24
+	    gfs[i,7]=point.weekday()/7
+	    gfs[i,8]=(point.month+point.day/30)/12
+	
+        #第10维是pm25,这一句
+        pm25in[:,0]=np.array(provider.pm25data[::-1])[(-4,-1),]#真实绝对pm25
 
-        hour = time.localtime().tm_hour #当前小时
-        #第7维是pm25,这一句
-        pm25in[:,0]=np.array(provider.pm25data[::-1])[(-4,-1),]+80.0-np.roll(pm25mean[:,pos[0],pos[1]],-((hour-23)%24))[(-4,-1),]
-
-        predict = RNNpredict(gfs,pm25in,steps)
-        #减80是因为，原始数据来自中国地图pm25数据，是在真实值上增加了80的
-        predict = predict + np.roll(np.tile(pm25mean[:,pos[0], pos[1]],np.ceil(t_predict/24)),-((1+hour)%24)) - 80.0
+        predict = RNNpredict(gfs,pm25in,steps)#直接返回未来的pm25真实值
 
         #输出裁剪
         predict = np.concatenate(([provider.pm25data[0]], predict))[:t_predict]
