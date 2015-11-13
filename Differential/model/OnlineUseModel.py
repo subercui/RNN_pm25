@@ -198,7 +198,7 @@ print '... training'
 batch=40
 train_batches=train_set.shape[0]/batch
 valid_batches=valid_set.shape[0]/batch
-test_batches=testdata.shape[0]/batch
+#test_batches=testdata.shape[0]/batch
 
 #cnt=np.repeat(np.eye(cntshape,dtype=theano.config.floatX).reshape(1,cntshape,cntshape),batch,axis=0)
 #a=RNNobj.pred_fun(train_gfs[0:20],train_pm25in[0:20])
