@@ -96,7 +96,6 @@ para_min=cPickle.load(f)
 para_max=cPickle.load(f)
 f.close()
         
-
 def RNNpredict(gfs,pm25in):
     #风速绝对化，记得加入
     gfs[:,2]=np.sqrt(gfs[:,2]**2+gfs[:,3]**2)
@@ -172,4 +171,3 @@ def predict_onlineRNN(provider,t_predict=120):
         return predict * (predict > 0)
     else:
         return []
-
