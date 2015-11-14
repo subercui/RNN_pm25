@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #预测模型，presict模式
-#这一版本应用了差分输出的模型
+#这一版本应用了差分输出的模型,预测下一小时比上一小时多出的
 '''
 [gfs-3h， gfs0h, gfs+3h, gfs+6h, gfs+9h,..., gfs+120h]; [pm25-3h,pm250h]+[pm25+3h,pm25+6h,...,pm25+120h]
 '''
@@ -99,7 +99,7 @@ def RNNpredict(gfs,pm25in,steps):
     #风速绝对化，记得加入
     gfs[:,2]=np.sqrt(gfs[:,2]**2+gfs[:,3]**2)
     #data scale and split
-    gfs[:,6]=(gfs[:,6]-para_min)/(para_max[:,6]-para_min)
+    gfs[:,:6]=(gfs[:,:6]-para_min)/(para_max[:,:6]-para_min)
     pm25in=pm25in/100.
     #predict
     a=RNNobj.pred_fun(gfs[None,:],pm25in[None,:])
@@ -108,7 +108,7 @@ def RNNpredict(gfs,pm25in,steps):
     y = np.zeros(41)
     y[0]=pm25in[-1,:]
     for i in range(1,y.shape[0]):
-        y[i]=y[i-1]+a[i-1]
+        y[i]=y[i-1]+a[:,i-1]
     func = interp1d(x, y,'cubic')
     xnew=np.arange(1,121)
     output=func(xnew)

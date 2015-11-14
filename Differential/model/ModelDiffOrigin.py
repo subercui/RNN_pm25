@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+#下一小时减去上一小时的差
 import theano, theano.tensor as T
 import numpy as np
 import theano_lstm
@@ -61,7 +62,7 @@ class Model:
         if self.steps > 1:
             for i in xrange(1,self.steps):
                 gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,i+2]],axis=1)
-                pm25in_x=T.concatenate([pm25in_x[:,2:],T.shape_padright(pm25in_x[:,-2]-self.results[:,i-1]),T.shape_padright(self.results[:,i-1])],axis=1)
+                pm25in_x=T.concatenate([pm25in_x[:,2:],T.shape_padright(pm25in_x[:,-2]+self.results[:,i-1]),T.shape_padright(self.results[:,i-1])],axis=1)
                 self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x],axis=1),self.layerstatus)
                 self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
                 

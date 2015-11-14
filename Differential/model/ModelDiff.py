@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 #每一次的输入是2*10维，前9维是gfs+时间，第10维是当前pm25,输出未来一小时的差
+#预测下一小时比上一小时多的
 import theano, theano.tensor as T
 import numpy as np
 import theano_lstm
@@ -59,14 +60,14 @@ class Model:
         pm25in_x=T.concatenate([pm25in[:,0],pm25in[:,1]],axis=1)
         self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x],axis=1))
         self.results=self.layerstatus[-1]
-        pm25next=pm25in[:,1]-self.results
+        pm25next=pm25in[:,1]+self.results
         if self.steps > 1:
             for i in xrange(1,self.steps):
                 gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,i+2]],axis=1)
                 pm25in_x=T.concatenate([pm25in_x[:,1:],pm25next],axis=1)
                 self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x],axis=1),self.layerstatus)
                 self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
-                pm25next=pm25next-self.layerstatus[-1]
+                pm25next=pm25next+self.layerstatus[-1]
                 
         return self.results
                 
