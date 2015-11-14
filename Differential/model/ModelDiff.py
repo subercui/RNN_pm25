@@ -59,15 +59,15 @@ class Model:
         gfs_x=T.concatenate([gfs[:,0],gfs[:,1],gfs[:,2]],axis=1)
         pm25in_x=T.concatenate([pm25in[:,0],pm25in[:,1]],axis=1)
         self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x],axis=1))
-        self.results=self.layerstatus[-1]
-        pm25next=pm25in[:,1]+self.results
+        self.results=pm25in[:,1]+self.layerstatus[-1]
+        #pm25next=pm25in[:,1]+self.results
         if self.steps > 1:
             for i in xrange(1,self.steps):
                 gfs_x=T.concatenate([gfs_x[:,9:],gfs[:,i+2]],axis=1)
-                pm25in_x=T.concatenate([pm25in_x[:,1:],pm25next],axis=1)
+                pm25in_x=T.concatenate([pm25in_x[:,1:],self.results[:,-1:]],axis=1)
                 self.layerstatus=self.model.forward(T.concatenate([gfs_x,pm25in_x],axis=1),self.layerstatus)
-                self.results=T.concatenate([self.results,self.layerstatus[-1]],axis=1)
-                pm25next=pm25next+self.layerstatus[-1]
+                self.results=T.concatenate([self.results,self.results[:,-1:]+self.layerstatus[-1]],axis=1)
+                #pm25next=pm25next+self.layerstatus[-1]
                 
         return self.results
                 
@@ -141,7 +141,7 @@ def construct(data_xy,borrow=True):#把后两维都作为pm25in
     data_gfs,data_pm25in,data_pm25target=np.split(data_xy,[-2,-1],axis=2)
     #data_pm25in,data_pm25target=np.split(data_pm25,[2],axis=1)
     #这里的维度改了
-    data_pm25target=data_pm25target.reshape(data_pm25target.shape[0],data_pm25target.shape[1])
+    data_pm25target=data_pm25in.reshape(data_pm25target.shape[0],data_pm25target.shape[1])
     #加入shared构造，记得加入,theano禁止调用
     data_gfs=np.asarray(data_gfs,dtype=theano.config.floatX)
     data_pm25in=np.asarray(data_pm25in,dtype=theano.config.floatX)
