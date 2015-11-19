@@ -75,7 +75,12 @@ class Model:
         self.cost = (self.predictions - self.pm25target[:,-self.steps:]).norm(L=2)
 
     def create_valid_error(self):
-        self.valid_error=T.mean(T.abs_(self.predictions - self.pm25target[:,-self.steps:]),axis=0)
+        #self.valid_error=T.mean(T.abs_(self.predictions - self.pm25target[:,-self.steps:]),axis=0)
+        pred=T.zeros_like(self.predictions)
+        pred[:,0]=self.pm25in[:,1]+self.predictions[:,0]
+        for i in xrange(1,self.steps):
+            pred[:,i]=pred[:,i-1]+self.predictions[:,i]
+        self.valid_error=T.mean(T.abs_(pred - self.pm25target[:,-self.steps:]),axis=0)
                 
     def create_predict_function(self):
         self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in],outputs =self.predictions,allow_input_downcast=True)
@@ -140,7 +145,7 @@ def construct(data_xy,borrow=True):#把后两维都作为pm25in
     data_gfs,data_pm25in,data_pm25target=np.split(data_xy,[-2,-1],axis=2)
     #data_pm25in,data_pm25target=np.split(data_pm25,[2],axis=1)
     #这里的维度改了
-    data_pm25target=data_pm25target.reshape(data_pm25target.shape[0],data_pm25target.shape[1])
+    data_pm25target=data_pm25in.reshape(data_pm25target.shape[0],data_pm25target.shape[1])
     #加入shared构造，记得加入,theano禁止调用
     data_gfs=np.asarray(data_gfs,dtype=theano.config.floatX)
     data_pm25in=np.asarray(data_pm25in,dtype=theano.config.floatX)
