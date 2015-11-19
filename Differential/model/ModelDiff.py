@@ -155,7 +155,7 @@ valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
 # LOAD TESTSET #
 ################
 print '... loading testset'
-dataset='/data/pm25data/dataset/DimPlusRNNTrueTest201509010903-0929.pkl.gz'
+dataset='/data/pm25data/dataset/DiffRNNTrueTest201509010903-0929.pkl.gz'
 f=gzip.open(dataset,'rb')
 testdata=cPickle.load(f)
 #data selection

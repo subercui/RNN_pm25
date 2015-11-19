@@ -17,6 +17,7 @@ theano.config.scan.allow_gc='False'
 #theano.config.device = 'gpu'
 
 today=datetime.today()
+today=today.replace(2015,11,12)
 
 class Model:
     """
