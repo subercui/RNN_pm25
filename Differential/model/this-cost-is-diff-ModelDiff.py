@@ -12,6 +12,7 @@ theano.config.floatX = 'float32'
 theano.config.mode='FAST_RUN'
 theano.config.profile='False'
 theano.config.scan.allow_gc='False'
+theano.config.on_unused_input='ignore'
 #theano.config.device = 'gpu'
 
 today=datetime.today()
@@ -77,10 +78,10 @@ class Model:
     def create_valid_error(self):
         #self.valid_error=T.mean(T.abs_(self.predictions - self.pm25target[:,-self.steps:]),axis=0)
         pred=T.zeros_like(self.predictions)
-        pred[:,0]=self.pm25in[:,1]+self.predictions[:,0]
+        pred=T.set_subtensor(pred[:,0],self.pm25in[:,1,0]+self.pm25target[:,-self.steps+0])#self.predictions[:,0])
         for i in xrange(1,self.steps):
-            pred[:,i]=pred[:,i-1]+self.predictions[:,i]
-        self.valid_error=T.mean(T.abs_(pred - self.pm25target[:,-self.steps:]),axis=0)
+            pred=T.set_subtensor(pred[:,i],pred[:,i-1]+self.pm25target[:,-self.steps+i])#self.predictions[:,i])
+        self.valid_error=T.mean(T.abs_(pred - self.pm25in[:,-self.steps:,0]),axis=0)
                 
     def create_predict_function(self):
         self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in],outputs =self.predictions,allow_input_downcast=True)
@@ -145,7 +146,7 @@ def construct(data_xy,borrow=True):#把后两维都作为pm25in
     data_gfs,data_pm25in,data_pm25target=np.split(data_xy,[-2,-1],axis=2)
     #data_pm25in,data_pm25target=np.split(data_pm25,[2],axis=1)
     #这里的维度改了
-    data_pm25target=data_pm25in.reshape(data_pm25target.shape[0],data_pm25target.shape[1])
+    data_pm25target=data_pm25target.reshape(data_pm25target.shape[0],data_pm25target.shape[1])
     #加入shared构造，记得加入,theano禁止调用
     data_gfs=np.asarray(data_gfs,dtype=theano.config.floatX)
     data_pm25in=np.asarray(data_pm25in,dtype=theano.config.floatX)
@@ -159,7 +160,7 @@ valid_gfs,valid_pm25in,valid_pm25target=construct(valid_set)
 # LOAD TESTSET #
 ################
 print '... loading testset'
-dataset='/data/pm25data/dataset/DimPlusRNNTrueTest201509010903-0929.pkl.gz'
+dataset='/data/pm25data/dataset/DiffRNNTrueTest201509010903-0929.pkl.gz'
 f=gzip.open(dataset,'rb')
 testdata=cPickle.load(f)
 #data selection
