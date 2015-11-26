@@ -19,12 +19,12 @@ today=datetime.today()
 today=today.replace(2015,9,1)
 
 def calc_valid(preddiff,realpm25):
-    steps=preddiff.shape[2]
+    steps=preddiff.shape[1]
     predict=np.zeros(preddiff.shape)
-    predict[:,0]=realpm25[:,-steps-1]+realpm25[:,-steps]
+    predict[:,0]=realpm25[:,-steps-1,0]+preddiff[:,-steps]
     for i in xrange(1,steps):
-        predict[:,i]=predict[:,i-1]+realpm25[:,-steps+i]
-    error=np.mean(np.abs(predict-realpm25),axis=0)
+        predict[:,i]=predict[:,i-1]+preddiff[:,-steps+i]
+    error=np.mean(np.abs(predict-realpm25[:,-steps:,0]),axis=0)
     return error
 
 
@@ -97,7 +97,7 @@ class Model:
         self.pred_fun = theano.function(inputs=[self.gfs,self.pm25in],outputs =self.predictions,allow_input_downcast=True)
                                  
     def create_training_function(self):
-        updates, gsums, xsums, lr, max_norm = create_optimization_updates(self.cost, self.params, method="adadelta")#这一步Gradient Decent!!!!
+        updates, gsums, xsums, lr, max_norm = create_optimization_updates(self.cost, self.params, method="adagrad")#这一步Gradient Decent!!!!
         self.update_fun = theano.function(
             inputs=[self.gfs,self.pm25in, self.pm25target],
             outputs=self.cost,
@@ -235,7 +235,7 @@ for k in xrange(5):#run k epochs
     for i in xrange(valid_batches): #an epoch
     #for i in xrange(100):
         preddiff=RNNobj.pred_fun(valid_gfs[batch*i:batch*(i+1)],valid_pm25in[batch*i:batch*(i+1)])
-        valid_error_addup=calc_valid(preddiff,valid_pm25target[batch*i:batch*(i+1)])+valid_error_addup
+        valid_error_addup=calc_valid(preddiff,valid_pm25in[batch*i:batch*(i+1)])+valid_error_addup
         #if i%(valid_batches/3) == 0:
             #error=valid_error_addup/(i+1)
 	    #print ("batch %(batch)d, validation error:"%({"batch":i+1}))
@@ -250,7 +250,7 @@ for k in xrange(5):#run k epochs
     for i in xrange(test_batches): #an epoch
     #for i in xrange(100):
         preddiff=RNNobj.pred_fun(test_gfs[batch*i:batch*(i+1)],test_pm25in[batch*i:batch*(i+1)])
-        test_error_addup=calc_valid(preddiff,test_pm25target[batch*i:batch*(i+1)])+test_error_addup
+        test_error_addup=calc_valid(preddiff,test_pm25in[batch*i:batch*(i+1)])+test_error_addup
         #if i%(test_batches/3) == 0:
             #print ("batch %(batch)d, test error:"%({"batch":i+1}))
     error=test_error_addup/(i+1)
