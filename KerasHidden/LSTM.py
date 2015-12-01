@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+#改这个实现真的要做的LSTM
 from __future__ import absolute_import
 import numpy as np
 import cPickle
